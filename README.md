@@ -1,5 +1,12 @@
 # Progress
 
+## 19/09/2025 (22:32)
+Updates: 
+1. Update fungsi pembuatan tim baru (cek docs)
+
+Bugs:
+1. Initial team masih hardcoded
+
 ## 18/09/2025 (21:49)
 Updates: 
 1. Udah update baru (pembubaran tim jika confidence leader <=50)

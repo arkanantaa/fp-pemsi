@@ -279,40 +279,49 @@ end
 
 to attempt-to-create-new-team
   ; Innovation mechanism - rare chance to create new team
+  ; Only enabled for people with manipulation > 80 and confidence < 10
 
-  ; Check if in ideologically diverse area (at least 2 different teams nearby)
-  let nearby-agents other turtles in-radius interaction-radius
-  let nearby-teams remove -1 remove-duplicates [team-id] of nearby-agents
+  ; Check eligibility: manipulation > 80 AND confidence < 10
+  if manipulation > 80 and confidence < 10 [
+    ; Check if in ideologically diverse area (at least 2 different teams nearby)
+    let nearby-agents other turtles in-radius interaction-radius
+    let nearby-teams remove -1 remove-duplicates [team-id] of nearby-agents
 
-  if length nearby-teams >= 2 [
-    ; Random chance to create new team
-    if random-float 1 < new-team-chance [
-      ; Select a neighbor from different team to mix with
-      let different-team-neighbors nearby-agents with [team-id != [team-id] of myself]
+    if length nearby-teams >= 2 [
+      ; Calculate factors for new team creation chance
+      let manipulation-factor (100 - manipulation) / 20
+      let confidence-factor confidence / 10
+      let final-new-team-chance manipulation-factor * confidence-factor * new-team-chance
+      
+      ; Random chance to create new team based on calculated probability
+      if random-float 1 < final-new-team-chance [
+        ; Select a neighbor from different team to mix with
+        let different-team-neighbors nearby-agents with [team-id != [team-id] of myself]
 
-      if any? different-team-neighbors [
-        let mixing-partner one-of different-team-neighbors
+        if any? different-team-neighbors [
+          let mixing-partner one-of different-team-neighbors
 
-        ; Create new team color by mixing current color with partner's color
-        let partner-color [team-id] of mixing-partner
-        let new-color mix-colors team-id partner-color
+          ; Create new team color by mixing current color with partner's color
+          let partner-color [team-id] of mixing-partner
+          let new-color mix-colors team-id partner-color
 
-        ; Add new color to team-list if not already exists
-        if not member? new-color team-list [
-          set team-list lput new-color team-list
-          set total-teams-created total-teams-created + 1
+          ; Add new color to team-list if not already exists
+          if not member? new-color team-list [
+            set team-list lput new-color team-list
+            set total-teams-created total-teams-created + 1
+          ]
+
+          ; Transform into leader of new team
+          set breed leaders
+          set team-id new-color
+          set color new-color + 2  ; Brighter for leader
+
+          ; Enhance leader attributes
+          set confidence min list 100 (confidence + 15)
+          set manipulation min list 10 (manipulation + 2)
+          set interaction-radius interaction-radius + 2
+          set size size + 0.3
         ]
-
-        ; Transform into leader of new team
-        set breed leaders
-        set team-id new-color
-        set color new-color + 2  ; Brighter for leader
-
-        ; Enhance leader attributes
-        set confidence min list 100 (confidence + 15)
-        set manipulation min list 10 (manipulation + 2)
-        set interaction-radius interaction-radius + 2
-        set size size + 0.3
       ]
     ]
   ]
