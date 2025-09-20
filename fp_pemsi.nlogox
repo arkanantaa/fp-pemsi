@@ -13,7 +13,7 @@ breed [followers follower]
 turtles-own [
   team-id                ; Color representing team affiliation
   confidence             ; Strength of belief in team (0-100)
-  manipulation           ; Ability to influence others (1-10)
+  manipulation           ; Ability to influence others (0-100)
   speed                  ; Movement speed per tick
   interaction-radius     ; Distance for interaction with others
   persuasions-this-tick  ; Count of successful persuasions credited this tick
@@ -51,7 +51,7 @@ to create-people [num]
 
     ; Assign random attributes
     set confidence random 101        ; 0-100
-    set manipulation 1 + random 10   ; 1-10
+    set manipulation random 101      ; 0-100
     set speed 0.1 + random-float 0.4 ; 0.1-0.5
     set interaction-radius 2 + random 3 ; 2-4
 
@@ -89,7 +89,7 @@ to promote-top-leaders
 
     set i i + 1
   ]
-  set total-teams-created initial-teams
+  set total-teams-created 0  ; Initialize to 0 - will count only NEW teams created during simulation
 end
 
 to go
@@ -203,7 +203,7 @@ to evaluate-surroundings
         ask persuader [
           set persuasions-this-tick persuasions-this-tick + 1
           set confidence min list 100 (confidence + 0.2)
-          set manipulation min list 10 (manipulation + 0.2)
+          set manipulation min list 100 (manipulation + 2)  ; Scaled up for 0-100 range
           set size 0.5 + (confidence / 200)
         ]
       ]
@@ -293,8 +293,8 @@ to attempt-to-create-new-team
 
     if length nearby-teams >= 2 [
       ; Calculate factors for new team creation chance
-      let manipulation-factor (100 - manipulation) / 20
-      let confidence-factor confidence / 10
+      let manipulation-factor manipulation / 100  ; Higher manipulation = higher factor (0-1)
+      let confidence-factor (10 - confidence) / 10  ; Lower confidence = higher factor (0-1)
       let final-new-team-chance manipulation-factor * confidence-factor * new-team-chance
       
       ; Random chance to create new team based on calculated probability
@@ -322,7 +322,7 @@ to attempt-to-create-new-team
 
           ; Enhance leader attributes
           set confidence min list 100 (confidence + 15)
-          set manipulation min list 10 (manipulation + 2)
+          set manipulation min list 100 (manipulation + 20)  ; Scaled up for 0-100 range
           set interaction-radius interaction-radius + 2
           set size size + 0.3
         ]
@@ -389,6 +389,8 @@ end]]></code>
     </plot>
     <monitor x="478" precision="17" y="479" height="60" fontSize="11" width="100" display="Active Teams">length team-list</monitor>
     <monitor x="595" precision="17" y="479" height="60" fontSize="11" width="125" display="New Teams Formed">total-teams-created</monitor>
+    <monitor x="478" precision="0" y="550" height="60" fontSize="9" width="240" display="Team IDs">word "Teams: " reduce word (map [t -> word "[" t "] "] team-list)</monitor>
+    <monitor x="478" precision="0" y="615" height="80" fontSize="9" width="240" display="Team Members">word "Members: " reduce word (map [t -> word "[" t ":" (count turtles with [team-id = t]) "] "] team-list)</monitor>
   </widgets>
   <info>## WHAT IS IT?
 
