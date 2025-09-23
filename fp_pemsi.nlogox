@@ -3,6 +3,8 @@
   <code><![CDATA[globals [
   team-list                ; List of active team colors
   environmental-modifier   ; Weather effect multiplier (0.5-1.0)
+  weather                  ; Weather slider value (0..1)
+  leader-boost-radius      ; Normalized 0..1 (effective radius 2..10)
   maximal-confidence       ; Fixed upper cap for confidence (set in setup)
   maximal-manipulation     ; Fixed upper cap for manipulation (set in setup)
   distinct-team-palette    ; Fixed palette for distinct team colors
@@ -153,10 +155,17 @@ to go
 end
 
 to update-environment
-  ; Set environmental modifier based on weather slider
-  if weather = 0 [ set environmental-modifier 1.0 ]    ; Sunny
-  if weather = 1 [ set environmental-modifier 0.8 ]    ; Hot
-  if weather = 2 [ set environmental-modifier 0.6 ]    ; Rainy
+  ;; Weather scale 0..1 step 0.25
+  ;; 0.00 = Ideal (x1.0)
+  ;; 0.25 = Difficult Lv1 (x0.8)
+  ;; 0.50 = Difficult Lv2 (x0.6)
+  ;; 0.75 = Difficult Lv3 (x0.4)
+  ;; 1.00 = Maximum Difficulty (x0.2)
+  if weather <= 0 [ set environmental-modifier 1.0 ]
+  if weather > 0 and weather <= 0.25 [ set environmental-modifier 0.8 ]
+  if weather > 0.25 and weather <= 0.5 [ set environmental-modifier 0.6 ]
+  if weather > 0.5 and weather <= 0.75 [ set environmental-modifier 0.4 ]
+  if weather > 0.75 [ set environmental-modifier 0.2 ]
 end
 
 to move-agent
@@ -169,10 +178,12 @@ end
 
 ; LEADER PROCEDURES
 to boost-confidence
-  ; Leaders boost confidence of same-team followers within leader-boost-radius
+  ; Leaders boost confidence of same-team followers within effective radius
   let my-team team-id
-  ; Treat the slider value as DIAMETER; effective radius is half of slider value
-  let effective-radius leader-boost-radius / 2
+  ; Interpret leader-boost-radius as normalized [0..1], map to [2..10]
+  let effective-radius 2 + (8 * leader-boost-radius)
+  if effective-radius < 2 [ set effective-radius 2 ]
+  if effective-radius > 10 [ set effective-radius 10 ]
   let nearby-followers followers in-radius effective-radius with [team-id = my-team]
 
   ask nearby-followers [
@@ -308,52 +319,37 @@ to disband-weak-teams
 end
 
 to attempt-to-create-new-team
-  ; Innovation mechanism - rare chance to create new team
-  ; Eligibility uses FIXED thresholds: manipulation 80-100 and confidence 0-10
+  ;; Probabilistic founding (no hard cutoffs). Requires local diversity (>=2 teams nearby).
+  let nearby-agents other turtles in-radius interaction-radius
+  let nearby-teams remove -1 remove-duplicates [team-id] of nearby-agents
 
-  ; Check eligibility using FIXED thresholds
-  if confidence <= 0 [
-    ; Check if in ideologically diverse area (at least 2 different teams nearby)
-    let nearby-agents other turtles in-radius interaction-radius
-    let nearby-teams remove -1 remove-duplicates [team-id] of nearby-agents
+  if length nearby-teams >= 2 [
+    let manipulation-factor manipulation / 100
+    let confidence-factor (100 - confidence) / 100
+    let final-new-team-chance environmental-modifier * manipulation-factor * confidence-factor * new-team-chance
 
-    if length nearby-teams >= 2 [
-      ; Calculate factors for new team creation chance (fixed thresholds)
-      let manipulation-factor manipulation / 100  ; Higher manipulation = higher factor (0-1)
-      let conf-denom 10  ; fixed threshold range for confidence 0..10
-      let confidence-factor max list 0 (min list 1 ((10 - confidence) / conf-denom))
-      let final-new-team-chance manipulation-factor * confidence-factor * new-team-chance
-      
-      ; Random chance to create new team based on calculated probability
-      if random-float 1 < final-new-team-chance [
-        ; Select a neighbor from different team to mix with
-        let different-team-neighbors nearby-agents with [team-id != [team-id] of myself]
+    if random-float 1 < final-new-team-chance [
+      let different-team-neighbors nearby-agents with [team-id != [team-id] of myself]
+      if any? different-team-neighbors [
+        let mixing-partner one-of different-team-neighbors
 
-        if any? different-team-neighbors [
-          let mixing-partner one-of different-team-neighbors
+        ;; choose distinct color (palette preferred, else distinct pick)
+        let new-color (ifelse-value (length team-list < length distinct-team-palette)
+                          [ next-available-team-color ]
+                          [ pick-distinct-color 10 ])
 
-          ; Choose a distinct new team color (prefer fixed palette, else distinct random)
-          let partner-color [team-id] of mixing-partner
-          let new-color (ifelse-value (length team-list < length distinct-team-palette)
-                           [ next-available-team-color ]
-                           [ pick-distinct-color 10 ])  ; ensure >=10 hue units away from existing
+        if not member? new-color team-list [ set team-list lput new-color team-list ]
 
-          ; Add new color to team-list if not already exists
-          if not member? new-color team-list [
-            set team-list lput new-color team-list
-          ]
+        ;; become leader of new team
+        set breed leaders
+        set team-id new-color
+        apply-team-color true
 
-          ; Transform into leader of new team
-          set breed leaders
-          set team-id new-color
-          apply-team-color true
-
-          ; Reset founder confidence to its initial value (capped)
-          set confidence min list maximal-confidence initial-confidence
-          set manipulation min list maximal-manipulation (manipulation + 20)  ; Scaled up for 0-100 range
-          set interaction-radius interaction-radius + 2
-          set size size + 0.3
-        ]
+        ;; founder attribute changes (respect caps)
+        set confidence min list maximal-confidence initial-confidence
+        set manipulation min list maximal-manipulation (manipulation + 20)
+        set interaction-radius interaction-radius + 2
+        set size size + 0.3
       ]
     ]
   ]
@@ -500,9 +496,9 @@ end]]></code>
     <button x="126" y="10" height="40" disableUntilTicks="false" forever="true" kind="Observer" width="63">go</button>
     <slider x="32" step="10" y="317" max="500" width="172" display="number-of-people" height="50" min="50" direction="Horizontal" default="250.0" variable="number-of-people"></slider>
     <slider x="33" step="1" y="388" max="5" width="172" display="initial-teams" height="50" min="2" direction="Horizontal" default="3.0" variable="initial-teams"></slider>
-    <slider x="31" step="1" y="447" max="30" width="172" display="leader-boost-radius" height="50" min="1" direction="Horizontal" default="10.0" variable="leader-boost-radius"></slider>
+  <slider x="31" step="0.25" y="447" max="1" width="172" display="leader-boost (0..1)" height="50" min="0" direction="Horizontal" default="0.25" variable="leader-boost-radius"></slider>
     <slider x="29" step="0.01" y="507" max="1" width="172" display="new-team-chance" height="50" min="0.01" direction="Horizontal" default="0.0" variable="new-team-chance"></slider>
-    <slider x="27" step="1" y="570" max="2" width="172" display="weather" height="50" min="0" direction="Horizontal" default="1.0" variable="weather"></slider>
+  <slider x="27" step="0.25" y="570" max="1" width="172" display="weather (0..1)" height="50" min="0" direction="Horizontal" default="0.0" variable="weather"></slider>
     <slider x="27" step="1" y="630" max="100" width="172" display="min-confidence" height="50" min="0" direction="Horizontal" default="20.0" variable="min-confidence"></slider>
     <slider x="27" step="1" y="690" max="100" width="172" display="max-confidence" height="50" min="0" direction="Horizontal" default="80.0" variable="max-confidence"></slider>
     <slider x="27" step="1" y="750" max="100" width="172" display="min-manipulation" height="50" min="0" direction="Horizontal" default="20.0" variable="min-manipulation"></slider>
@@ -1292,7 +1288,7 @@ end]]></code>
         <point x="2" y="194"></point>
         <point x="13" y="197"></point>
         <point x="30" y="191"></point>
-        <point x="38" y="193"></point>
+               <point x="38" y="193"></point>
         <point x="38" y="205"></point>
         <point x="20" y="226"></point>
         <point x="20" y="257"></point>
