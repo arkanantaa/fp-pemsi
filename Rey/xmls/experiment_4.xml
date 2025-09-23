@@ -1,6 +1,5 @@
-
 <experiments>
-  <experiment name="experiment" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="false">
+  <experiment name="experiment_confidence_100" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <metrics>
@@ -10,7 +9,7 @@
     </metrics>
     <constants>
       <enumeratedValueSet variable="number-of-people">
-        <value value="100"></value>
+        <value value="250"></value>
       </enumeratedValueSet>
       <enumeratedValueSet variable="leader-boost-radius">
         <value value="10"></value>
@@ -19,16 +18,16 @@
         <value value="0.01"></value>
       </enumeratedValueSet>
       <enumeratedValueSet variable="minimal-manipulation">
-        <value value="80"></value>
+        <value value="20"></value>
       </enumeratedValueSet>
       <enumeratedValueSet variable="weather">
         <value value="1"></value>
       </enumeratedValueSet>
       <enumeratedValueSet variable="initial-teams">
-        <value value="3"></value>
+        <value value="2"></value>
       </enumeratedValueSet>
       <enumeratedValueSet variable="minimal-confidence">
-        <value value="10"></value>
+        <value value="100"></value>
       </enumeratedValueSet>
     </constants>
   </experiment>
