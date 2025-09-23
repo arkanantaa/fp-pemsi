@@ -1,0 +1,34 @@
+<experiments>
+  <experiment name="experiment_manipulation_4" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <metrics>
+      <metric>length team-list</metric>
+      <metric>team-list</metric>
+      <metric>team-member-counts</metric>
+    </metrics>
+    <constants>
+      <enumeratedValueSet variable="number-of-people">
+        <value value="250"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="leader-boost-radius">
+        <value value="10"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="new-team-chance">
+        <value value="0.01"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="minimal-manipulation">
+        <value value="100"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="weather">
+        <value value="1"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="initial-teams">
+        <value value="2"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="minimal-confidence">
+        <value value="20"></value>
+      </enumeratedValueSet>
+    </constants>
+  </experiment>
+</experiments>
