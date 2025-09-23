@@ -3,10 +3,11 @@
   <code><![CDATA[globals [
   team-list                ; List of active team colors
   environmental-modifier   ; Weather effect multiplier (0.5-1.0)
-  total-teams-created      ; Counter for new teams formed
   maximal-confidence       ; Fixed upper cap for confidence (set in setup)
   maximal-manipulation     ; Fixed upper cap for manipulation (set in setup)
   distinct-team-palette    ; Fixed palette for distinct team colors
+  total-teams-reached-3    ; Lifetime count of teams that ever had >=3 members
+  counted-teams-3          ; List of team colors already counted towards >=3
   ]
 
 breed [leaders leader]
@@ -30,10 +31,11 @@ to setup
   ; Initialize global variables
   set team-list []
   set environmental-modifier 1.0
-  set total-teams-created 0
   ; Set fixed maxima (replaces sliders)
   set maximal-confidence 100
   set maximal-manipulation 100
+  set total-teams-reached-3 0
+  set counted-teams-3 []
   ; Initialize a high-contrast palette (NetLogo 0-140 color wheel, spaced hues)
   set distinct-team-palette [15 25 35 45 55 65 75 85 95 105 115 125 135 5  
                              20 30 40 50 60 70 80 90 100 110 120 130 10 0]
@@ -100,7 +102,6 @@ to promote-top-leaders
 
     set i i + 1
   ]
-  set total-teams-created 0  ; Initialize to 0 - will count only NEW teams created during simulation
 end
 
 to go
@@ -131,6 +132,9 @@ to go
 
   ; Ensure each team has the highest-confidence turtle as leader
   reassign-leaders
+
+  ; Update lifetime counter for teams that have ever reached >=3 members
+  update-teams-reached-3
 
   ; Disband weak teams (leader confidence <= 50)
   disband-weak-teams
@@ -201,13 +205,13 @@ to evaluate-surroundings
     let switch-probability ((best-opponent-score - my-score) / best-opponent-score) * environmental-modifier
 
     if random-float 1 < switch-probability [
-    ; Switch to the more influential team
-  set team-id best-opponent-team
-  ; Apply team color consistently
-  apply-team-color false
+      ; Switch to the more influential team
+      set team-id best-opponent-team
+      ; Apply team color consistently
+      apply-team-color false
 
-      ; Slightly reduce confidence due to switching
-      set confidence max list 10 (confidence - 5)
+      ; Reset confidence to the agent's initial value (capped by maximal-confidence)
+      set confidence min list maximal-confidence initial-confidence
       set size 0.5 + (confidence / 200)
 
       ; Credit persuasion to one member (prefer a leader) of the destination team nearby
@@ -331,7 +335,6 @@ to attempt-to-create-new-team
           ; Add new color to team-list if not already exists
           if not member? new-color team-list [
             set team-list lput new-color team-list
-            set total-teams-created total-teams-created + 1
           ]
 
           ; Transform into leader of new team
@@ -393,6 +396,25 @@ to-report get-team-members-display
   report result
 end
 
+to-report count-teams-with-min-members [k]
+  ;; Count how many ACTIVE teams currently have at least k members
+  let n 0
+  foreach team-list [ t ->
+    if (count turtles with [team-id = t] >= k) [ set n n + 1 ]
+  ]
+  report n
+end
+
+to update-teams-reached-3
+  ;; If an active team reaches >=3 members and hasn't been counted before, record it (lifetime, non-decreasing)
+  foreach team-list [ t ->
+    if (count turtles with [team-id = t] >= 3) and (not member? t counted-teams-3) [
+      set counted-teams-3 lput t counted-teams-3
+      set total-teams-reached-3 total-teams-reached-3 + 1
+    ]
+  ]
+end
+
 ; UTILITY PROCEDURES
 to apply-team-color [is-leader]
   ;; Apply a consistent color scheme for teams with optional vivid mode
@@ -425,11 +447,33 @@ to-report pick-distinct-color [min-gap]
 end
 
 to bounce-at-edges
-  ;; Prevent agents from visually leaving the map by bouncing off edges
-  if xcor > max-pxcor [ set xcor max-pxcor set heading 180 - heading ]
-  if xcor < min-pxcor [ set xcor min-pxcor set heading 180 - heading ]
-  if ycor > max-pycor [ set ycor max-pycor set heading (- heading) ]
-  if ycor < min-pycor [ set ycor min-pycor set heading (- heading) ]
+  ;; Robust bounce: reflect heading, nudge inside, add small random deflection, and step forward to avoid sticking
+  let eps 0.5
+  if xcor > max-pxcor [
+    ; move slightly inside and reflect horizontally
+    set xcor max-pxcor - eps
+    set heading (180 - heading)
+    set heading heading + (random-float 20 - 10)
+    forward 0.5
+  ]
+  if xcor < min-pxcor [
+    set xcor min-pxcor + eps
+    set heading (180 - heading)
+    set heading heading + (random-float 20 - 10)
+    forward 0.5
+  ]
+  if ycor > max-pycor [
+    set ycor max-pycor - eps
+    set heading (- heading)
+    set heading heading + (random-float 20 - 10)
+    forward 0.5
+  ]
+  if ycor < min-pycor [
+    set ycor min-pycor + eps
+    set heading (- heading)
+    set heading heading + (random-float 20 - 10)
+    forward 0.5
+  ]
 end
 to update-team-plots
   ; Update team population plot - simplified version
@@ -444,13 +488,10 @@ end]]></code>
     <button x="31" y="10" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="63">setup</button>
     <button x="126" y="10" height="40" disableUntilTicks="false" forever="true" kind="Observer" width="63">go</button>
     <slider x="32" step="10" y="317" max="500" width="172" display="number-of-people" height="50" min="50" direction="Horizontal" default="100.0" variable="number-of-people"></slider>
-    <slider x="33" step="1" y="388" max="5" width="172" display="initial-teams" height="50" min="2" direction="Horizontal" default="2.0" variable="initial-teams"></slider>
-  <slider x="31" step="1" y="447" max="30" width="172" display="leader-boost-radius" height="50" min="1" direction="Horizontal" default="10.0" variable="leader-boost-radius"></slider>
-    <slider x="29" step="0.0001" y="507" max="1" width="172" display="new-team-chance" height="50" min="0" direction="Horizontal" default="1.0E-4" variable="new-team-chance"></slider>
+    <slider x="33" step="1" y="388" max="5" width="172" display="initial-teams" height="50" min="2" direction="Horizontal" default="3.0" variable="initial-teams"></slider>
+    <slider x="31" step="1" y="447" max="30" width="172" display="leader-boost-radius" height="50" min="1" direction="Horizontal" default="10.0" variable="leader-boost-radius"></slider>
+    <slider x="29" step="0.01" y="507" max="1" width="172" display="new-team-chance" height="50" min="0.01" direction="Horizontal" default="0.01" variable="new-team-chance"></slider>
     <slider x="27" step="1" y="570" max="2" width="172" display="weather" height="50" min="0" direction="Horizontal" default="1.0" variable="weather"></slider>
-  <!-- Max caps for experiment -->
-  
-  
     <slider x="27" step="1" y="630" max="100" width="172" display="minimal-confidence" height="50" min="0" direction="Horizontal" default="10.0" variable="minimal-confidence"></slider>
     <slider x="27" step="1" y="690" max="100" width="172" display="minimal-manipulation" height="50" min="0" direction="Horizontal" default="80.0" variable="minimal-manipulation"></slider>
     <plot x="228" autoPlotX="true" yMax="10.0" autoPlotY="true" yAxis="Population" y="476" xMin="0.0" height="175" legend="false" xMax="10.0" yMin="0.0" width="230" xAxis="Time" display="Team Population">
@@ -478,9 +519,9 @@ end]]></code>
       </pen>
     </plot>
     <monitor x="478" precision="17" y="479" height="60" fontSize="11" width="100" display="Active Teams">length team-list</monitor>
-    <monitor x="595" precision="17" y="479" height="60" fontSize="11" width="125" display="New Teams Formed">total-teams-created</monitor>
-  <monitor x="478" precision="0" y="550" height="60" fontSize="9" width="240" display="Team IDs">get-team-ids-display</monitor>
-  <monitor x="478" precision="0" y="615" height="120" fontSize="9" width="240" display="Team Members">get-team-members-display</monitor>
+    <monitor x="590" precision="17" y="479" height="60" fontSize="11" width="125" display="&gt;=3 Members Teams (lifetime)">total-teams-reached-3</monitor>
+    <monitor x="478" precision="0" y="550" height="60" fontSize="9" width="240" display="Team IDs">get-team-ids-display</monitor>
+    <monitor x="478" precision="0" y="615" height="120" fontSize="9" width="240" display="Team Members">get-team-members-display</monitor>
   </widgets>
   <info>## WHAT IS IT?
 
