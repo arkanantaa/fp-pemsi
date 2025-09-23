@@ -3,8 +3,11 @@
   <code><![CDATA[globals [
   team-list                ; List of active team colors
   environmental-modifier   ; Weather effect multiplier (0.5-1.0)
-  total-teams-created     ; Counter for new teams formed
-]
+  total-teams-created      ; Counter for new teams formed
+  maximal-confidence       ; Fixed upper cap for confidence (set in setup)
+  maximal-manipulation     ; Fixed upper cap for manipulation (set in setup)
+  distinct-team-palette    ; Fixed palette for distinct team colors
+  ]
 
 breed [leaders leader]
 breed [followers follower]
@@ -13,6 +16,7 @@ breed [followers follower]
 turtles-own [
   team-id                ; Color representing team affiliation
   confidence             ; Strength of belief in team (0-100)
+  initial-confidence     ; The agent's initial confidence at creation
   manipulation           ; Ability to influence others (0-100)
   speed                  ; Movement speed per tick
   interaction-radius     ; Distance for interaction with others
@@ -27,6 +31,12 @@ to setup
   set team-list []
   set environmental-modifier 1.0
   set total-teams-created 0
+  ; Set fixed maxima (replaces sliders)
+  set maximal-confidence 100
+  set maximal-manipulation 100
+  ; Initialize a high-contrast palette (NetLogo 0-140 color wheel, spaced hues)
+  set distinct-team-palette [15 25 35 45 55 65 75 85 95 105 115 125 135 5  
+                             20 30 40 50 60 70 80 90 100 110 120 130 10 0]
 
   ; Create the entire population as followers with no team
   create-people number-of-people
@@ -49,9 +59,10 @@ to create-people [num]
     set team-id -1
     set color white
 
-    ; Assign random attributes
-    set confidence random 101        ; 0-100
-    set manipulation random 101      ; 0-100
+  ; Assign random attributes (capped by experiment maxima)
+  set confidence min list maximal-confidence (random 101)        ; 0-maximal-confidence
+  set initial-confidence confidence                              ; remember initial value
+  set manipulation min list maximal-manipulation (random 101)    ; 0-maximal-manipulation
     set speed 0.1 + random-float 0.4 ; 0.1-0.5
     set interaction-radius 2 + random 3 ; 2-4
 
@@ -81,7 +92,7 @@ to promote-top-leaders
 
     ; Assign team
     set team-id new-team-color
-    set color new-team-color + 2 ; Make leader brighter
+  apply-team-color true
     set team-list lput new-team-color team-list
 
     set interaction-radius interaction-radius + 2
@@ -141,16 +152,20 @@ to move-agent
   ; Random movement based on speed
   right random 60 - 30
   forward speed
+  ; Keep agents inside visible world by bouncing at edges
+  bounce-at-edges
 end
 
 ; LEADER PROCEDURES
 to boost-confidence
   ; Leaders boost confidence of same-team followers within leader-boost-radius
   let my-team team-id
-  let nearby-followers followers in-radius leader-boost-radius with [team-id = my-team]
+  ; Treat the slider value as DIAMETER; effective radius is half of slider value
+  let effective-radius leader-boost-radius / 2
+  let nearby-followers followers in-radius effective-radius with [team-id = my-team]
 
   ask nearby-followers [
-    set confidence min list 100 (confidence + 2)
+  set confidence min list maximal-confidence (confidence + 2)
     ; Update size based on new confidence
     set size 0.5 + (confidence / 200)
   ]
@@ -186,10 +201,10 @@ to evaluate-surroundings
     let switch-probability ((best-opponent-score - my-score) / best-opponent-score) * environmental-modifier
 
     if random-float 1 < switch-probability [
-      ; Switch to the more influential team
+    ; Switch to the more influential team
   set team-id best-opponent-team
-  ; Only set color if assigned
-  if team-id != -1 [ set color team-id ]
+  ; Apply team color consistently
+  apply-team-color false
 
       ; Slightly reduce confidence due to switching
       set confidence max list 10 (confidence - 5)
@@ -202,8 +217,8 @@ to evaluate-surroundings
         let persuader (ifelse-value any? candidate-leaders [ one-of candidate-leaders ] [ one-of candidate-persuaders ])
         ask persuader [
           set persuasions-this-tick persuasions-this-tick + 1
-          set confidence min list 100 (confidence + 0.2)
-          set manipulation min list 100 (manipulation + 2)  ; Scaled up for 0-100 range
+          set confidence min list maximal-confidence (confidence + 0.2)
+          set manipulation min list maximal-manipulation (manipulation + 2)  ; Scaled up for 0-100 range
           set size 0.5 + (confidence / 200)
         ]
       ]
@@ -245,12 +260,12 @@ to reassign-leaders
       ; Promote highest-confidence turtle
       ask new-leader [
         set breed leaders
-        if team-id != -1 [ set color team-id + 2 ]
+        apply-team-color true
       ]
       ; Demote all other members to followers
       ask (members with [self != new-leader]) [
         set breed followers
-        if team-id != -1 [ set color team-id ]
+        apply-team-color false
       ]
     ]
   ]
@@ -283,19 +298,21 @@ end
 
 to attempt-to-create-new-team
   ; Innovation mechanism - rare chance to create new team
-  ; Only enabled for people with manipulation > 80 and confidence < 10
+  ; Eligibility controlled by sliders: minimal-manipulation (>=) and minimal-confidence (<=)
 
-  ; Check eligibility: manipulation > 80 AND confidence < 10
-  if manipulation > 80 and confidence < 10 [
+  ; Check eligibility using experiment sliders
+  if manipulation >= minimal-manipulation and confidence <= minimal-confidence [
     ; Check if in ideologically diverse area (at least 2 different teams nearby)
     let nearby-agents other turtles in-radius interaction-radius
     let nearby-teams remove -1 remove-duplicates [team-id] of nearby-agents
 
     if length nearby-teams >= 2 [
-      ; Calculate factors for new team creation chance
-      let manipulation-factor manipulation / 100  ; Higher manipulation = higher factor (0-1)
-      let confidence-factor (10 - confidence) / 10  ; Lower confidence = higher factor (0-1)
-      let final-new-team-chance manipulation-factor * confidence-factor * new-team-chance
+  ; Calculate factors for new team creation chance
+  let manipulation-factor manipulation / 100  ; Higher manipulation = higher factor (0-1)
+  ; Normalize confidence by slider threshold: lower confidence (relative to threshold) => higher factor
+  let conf-denom max list 1 minimal-confidence  ; guard to avoid division by zero
+  let confidence-factor max list 0 (min list 1 ((minimal-confidence - confidence) / conf-denom))
+  let final-new-team-chance manipulation-factor * confidence-factor * new-team-chance
       
       ; Random chance to create new team based on calculated probability
       if random-float 1 < final-new-team-chance [
@@ -305,9 +322,11 @@ to attempt-to-create-new-team
         if any? different-team-neighbors [
           let mixing-partner one-of different-team-neighbors
 
-          ; Create new team color by mixing current color with partner's color
+          ; Choose a distinct new team color (prefer fixed palette, else distinct random)
           let partner-color [team-id] of mixing-partner
-          let new-color mix-colors team-id partner-color
+          let new-color (ifelse-value (length team-list < length distinct-team-palette)
+                           [ next-available-team-color ]
+                           [ pick-distinct-color 10 ])  ; ensure >=10 hue units away from existing
 
           ; Add new color to team-list if not already exists
           if not member? new-color team-list [
@@ -318,11 +337,11 @@ to attempt-to-create-new-team
           ; Transform into leader of new team
           set breed leaders
           set team-id new-color
-          set color new-color + 2  ; Brighter for leader
+          apply-team-color true
 
-          ; Enhance leader attributes
-          set confidence min list 100 (confidence + 15)
-          set manipulation min list 100 (manipulation + 20)  ; Scaled up for 0-100 range
+          ; Reset founder confidence to its initial value (capped)
+          set confidence min list maximal-confidence initial-confidence
+          set manipulation min list maximal-manipulation (manipulation + 20)  ; Scaled up for 0-100 range
           set interaction-radius interaction-radius + 2
           set size size + 0.3
         ]
@@ -332,20 +351,86 @@ to attempt-to-create-new-team
 end
 
 to-report mix-colors [color1 color2]
-  ; Use scale-color as specified in the essay
-  let base-color color1
-  let intensity (color2 - color1) / 140  ; Scale factor for color mixing
-  let mixed-color scale-color base-color intensity 0 1
+  ; Robust color mixing to produce a distinct, valid NetLogo color
+  ; Guard against unassigned color (-1) by using partner's color as base
+  let base1 (ifelse-value color1 = -1 [ color2 ] [ color1 ])
+  let base2 color2
 
-  ; Ensure we get a distinct color
-  if abs(mixed-color - color1) < 1 [
-    set mixed-color color1 + 10 + random 20  ; Create more distinct new color
+  ; Compute a midpoint hue with wrap-around on NetLogo's 0-140 color wheel
+  let raw-mix ( (base1 + base2) / 2 )
+  ; Add a small random offset to avoid duplicates and increase distinction
+  let mixed-color raw-mix + (10 + random 20)
+
+  ; Normalize into 0-140 color wheel range
+  while [mixed-color < 0] [ set mixed-color mixed-color + 140 ]
+  while [mixed-color >= 140] [ set mixed-color mixed-color - 140 ]
+
+  ; Ensure distinct from base and existing teams; perturb until unique
+  while [ (abs(mixed-color - base1) < 1) or member? mixed-color team-list ] [
+    set mixed-color mixed-color + (5 + random 20)
+    while [mixed-color >= 140] [ set mixed-color mixed-color - 140 ]
   ]
 
   report mixed-color
 end
 
+to-report get-team-ids-display
+  ;; Simple approach: build team display string with foreach
+  let result "Teams: "
+  foreach team-list [ t ->
+    set result word result (word "[" t "] ")
+  ]
+  report result
+end
+
+to-report get-team-members-display
+  ;; Use visual separators since monitors don't support newlines
+  let result ""
+  foreach team-list [ t ->
+    let member-count count turtles with [team-id = t]
+    set result word result (word "Team " t ": " member-count "  |  ")
+  ]
+  report result
+end
+
 ; UTILITY PROCEDURES
+to apply-team-color [is-leader]
+  ;; Apply a consistent color scheme for teams with optional vivid mode
+  if team-id = -1 [ set color white stop ]
+  let base team-id
+  ifelse is-leader [ set color base + 2 ] [ set color base ]
+end
+
+to-report next-available-team-color
+  ;; Return first unused color from the fixed palette
+  foreach distinct-team-palette [ c ->
+    if not member? c team-list [ report c ]
+  ]
+  ; If palette is somehow fully used, fallback to a distinct pick
+  report pick-distinct-color 10
+end
+
+to-report pick-distinct-color [min-gap]
+  ;; Pick a hue in [0,140) that is at least min-gap away from every color in team-list
+  let attempts 0
+  let c random 140
+  while [ attempts < 200
+          and (not empty? team-list)
+          and member? true (map [ t -> (min list abs(c - t) (140 - abs(c - t))) < min-gap ] team-list)
+        ] [
+    set c random 140
+    set attempts attempts + 1
+  ]
+  report c
+end
+
+to bounce-at-edges
+  ;; Prevent agents from visually leaving the map by bouncing off edges
+  if xcor > max-pxcor [ set xcor max-pxcor set heading 180 - heading ]
+  if xcor < min-pxcor [ set xcor min-pxcor set heading 180 - heading ]
+  if ycor > max-pycor [ set ycor max-pycor set heading (- heading) ]
+  if ycor < min-pycor [ set ycor min-pycor set heading (- heading) ]
+end
 to update-team-plots
   ; Update team population plot - simplified version
   set-current-plot "Team Population"
@@ -360,9 +445,14 @@ end]]></code>
     <button x="126" y="10" height="40" disableUntilTicks="false" forever="true" kind="Observer" width="63">go</button>
     <slider x="32" step="10" y="317" max="500" width="172" display="number-of-people" height="50" min="50" direction="Horizontal" default="100.0" variable="number-of-people"></slider>
     <slider x="33" step="1" y="388" max="5" width="172" display="initial-teams" height="50" min="2" direction="Horizontal" default="2.0" variable="initial-teams"></slider>
-    <slider x="31" step="1" y="447" max="10" width="172" display="leader-boost-radius" height="50" min="1" direction="Horizontal" default="5.0" variable="leader-boost-radius"></slider>
+  <slider x="31" step="1" y="447" max="30" width="172" display="leader-boost-radius" height="50" min="1" direction="Horizontal" default="10.0" variable="leader-boost-radius"></slider>
     <slider x="29" step="0.0001" y="507" max="1" width="172" display="new-team-chance" height="50" min="0" direction="Horizontal" default="1.0E-4" variable="new-team-chance"></slider>
     <slider x="27" step="1" y="570" max="2" width="172" display="weather" height="50" min="0" direction="Horizontal" default="1.0" variable="weather"></slider>
+  <!-- Max caps for experiment -->
+  
+  
+    <slider x="27" step="1" y="630" max="100" width="172" display="minimal-confidence" height="50" min="0" direction="Horizontal" default="10.0" variable="minimal-confidence"></slider>
+    <slider x="27" step="1" y="690" max="100" width="172" display="minimal-manipulation" height="50" min="0" direction="Horizontal" default="80.0" variable="minimal-manipulation"></slider>
     <plot x="228" autoPlotX="true" yMax="10.0" autoPlotY="true" yAxis="Population" y="476" xMin="0.0" height="175" legend="false" xMax="10.0" yMin="0.0" width="230" xAxis="Time" display="Team Population">
       <setup></setup>
       <update></update>
@@ -389,8 +479,8 @@ end]]></code>
     </plot>
     <monitor x="478" precision="17" y="479" height="60" fontSize="11" width="100" display="Active Teams">length team-list</monitor>
     <monitor x="595" precision="17" y="479" height="60" fontSize="11" width="125" display="New Teams Formed">total-teams-created</monitor>
-    <monitor x="478" precision="0" y="550" height="60" fontSize="9" width="240" display="Team IDs">word "Teams: " reduce word (map [t -> word "[" t "] "] team-list)</monitor>
-    <monitor x="478" precision="0" y="615" height="80" fontSize="9" width="240" display="Team Members">word "Members: " reduce word (map [t -> word "[" t ":" (count turtles with [team-id = t]) "] "] team-list)</monitor>
+  <monitor x="478" precision="0" y="550" height="60" fontSize="9" width="240" display="Team IDs">get-team-ids-display</monitor>
+  <monitor x="478" precision="0" y="615" height="120" fontSize="9" width="240" display="Team Members">get-team-members-display</monitor>
   </widgets>
   <info>## WHAT IS IT?
 
