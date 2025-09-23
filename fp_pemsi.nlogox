@@ -61,10 +61,12 @@ to create-people [num]
     set team-id -1
     set color white
 
-  ; Assign random attributes (capped by experiment maxima)
-  set confidence min list maximal-confidence (random 101)        ; 0-maximal-confidence
+  ; Assign random attributes (initialized using sliders as minima)
+  let conf-range max list 0 (maximal-confidence - minimal-confidence)
+  set confidence minimal-confidence + (ifelse-value conf-range > 0 [ random (conf-range + 1) ] [ 0 ])
   set initial-confidence confidence                              ; remember initial value
-  set manipulation min list maximal-manipulation (random 101)    ; 0-maximal-manipulation
+  let manip-range max list 0 (maximal-manipulation - minimal-manipulation)
+  set manipulation minimal-manipulation + (ifelse-value manip-range > 0 [ random (manip-range + 1) ] [ 0 ])
     set speed 0.1 + random-float 0.4 ; 0.1-0.5
     set interaction-radius 2 + random 3 ; 2-4
 
@@ -307,21 +309,20 @@ end
 
 to attempt-to-create-new-team
   ; Innovation mechanism - rare chance to create new team
-  ; Eligibility controlled by sliders: minimal-manipulation (>=) and minimal-confidence (<=)
+  ; Eligibility uses FIXED thresholds: manipulation 80-100 and confidence 0-10
 
-  ; Check eligibility using experiment sliders
-  if manipulation >= minimal-manipulation and confidence <= minimal-confidence [
+  ; Check eligibility using FIXED thresholds
+  if manipulation >= 80 and confidence <= 10 [
     ; Check if in ideologically diverse area (at least 2 different teams nearby)
     let nearby-agents other turtles in-radius interaction-radius
     let nearby-teams remove -1 remove-duplicates [team-id] of nearby-agents
 
     if length nearby-teams >= 2 [
-  ; Calculate factors for new team creation chance
-  let manipulation-factor manipulation / 100  ; Higher manipulation = higher factor (0-1)
-  ; Normalize confidence by slider threshold: lower confidence (relative to threshold) => higher factor
-  let conf-denom max list 1 minimal-confidence  ; guard to avoid division by zero
-  let confidence-factor max list 0 (min list 1 ((minimal-confidence - confidence) / conf-denom))
-  let final-new-team-chance manipulation-factor * confidence-factor * new-team-chance
+      ; Calculate factors for new team creation chance (fixed thresholds)
+      let manipulation-factor manipulation / 100  ; Higher manipulation = higher factor (0-1)
+      let conf-denom 10  ; fixed threshold range for confidence 0..10
+      let confidence-factor max list 0 (min list 1 ((10 - confidence) / conf-denom))
+      let final-new-team-chance manipulation-factor * confidence-factor * new-team-chance
       
       ; Random chance to create new team based on calculated probability
       if random-float 1 < final-new-team-chance [
