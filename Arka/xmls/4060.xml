@@ -1,0 +1,41 @@
+
+<experiments>
+  <experiment name="Manipulation Level 40-60" repetitions="100" sequentialRunOrder="true" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>(length team-list) = 1</exitCondition>
+    <metrics>
+      <metric>ticks</metric>
+      <metric>neutral-count</metric>
+    </metrics>
+    <constants>
+      <enumeratedValueSet variable="number-of-people">
+        <value value="250"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="new-team-chance">
+        <value value="0.05"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="min-confidence">
+        <value value="0"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="min-manipulation">
+        <value value="40"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="weather-variable">
+        <value value="0"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="max-confidence">
+        <value value="100"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="initial-teams">
+        <value value="3"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="leader-boost-r">
+        <value value="0.5"></value>
+      </enumeratedValueSet>
+      <enumeratedValueSet variable="max-manipulation">
+        <value value="60"></value>
+      </enumeratedValueSet>
+    </constants>
+  </experiment>
+</experiments>
