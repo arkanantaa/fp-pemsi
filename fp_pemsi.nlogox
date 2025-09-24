@@ -33,7 +33,7 @@ turtles-own [
   boosted-by                ; Temporary confidence added by leader aura this tick
   lose-streak               ; Counter for consecutive losses
   win-streak                ; Counter for consecutive wins
-  team-history              ; 
+  team-history              ; List of previously joined team-ids (for rejoin resistance / memory)
 ]
 
 to setup
@@ -93,6 +93,7 @@ to create-people [num]
     set disband-timer 0
     set lose-streak 0
     set win-streak 0
+    set team-history []    ;; IMPORTANT: initialize as empty list (prevents member? on 0 error)
   ]
 end
 
@@ -118,6 +119,8 @@ to promote-top-leaders
     ; Assign team
     set team-id new-team-color
   apply-team-color true
+    ; Record first team affiliation in history for memory mechanics
+    set team-history (list new-team-color)
     set team-list lput new-team-color team-list
 
     set size size + 0.3
@@ -337,10 +340,11 @@ to resolve-loss [ loser winner ]
     if join-prob < 0.05 [ set join-prob 0.05 ]  ; minimal adoption pressure
     if random-float 1 < join-prob [
       ask loser [
+        if not is-list? team-history [ set team-history [] ]
         set team-id w_team
         set breed followers
         set win-streak 0  ; Reset win streak on loss
-      apply-team-color false
+        apply-team-color false
         if not member? w_team team-history [ set team-history lput w_team team-history ]
         set lose-streak 0
       ]
@@ -358,6 +362,7 @@ to resolve-loss [ loser winner ]
   if roll < prob [
     ; create new team (become leader)
     ask loser [
+      if not is-list? team-history [ set team-history [] ]
       let new-color (ifelse-value (length team-list < length distinct-team-palette)
                         [ next-available-team-color ]
                         [ pick-distinct-color 10 ])
@@ -380,28 +385,29 @@ to resolve-loss [ loser winner ]
     if w_team != -1 [
       ; join winner's team (only if winner has a team)
       ask loser [
-        let resist-multiplier (ifelse-value member? w_team team-history [0.2] [1.0])
+        if not is-list? team-history [ set team-history [] ]
+        let resist-multiplier (ifelse-value (member? w_team team-history) [0.2] [1.0])
         if random-float 1 < resist-multiplier [
           set team-id w_team
           set breed followers
           apply-team-color false
-        ; Confidence decreases based on lose streak (progressive penalty)
+          ; Confidence decreases based on lose streak (progressive penalty)
           if l_team != -1 [
-          set lose-streak lose-streak + 1
-          set win-streak 0  ; Reset win streak on loss
-          let base-penalty 2  ; Tunable parameter for streak penalty
-          let streak-penalty (lose-streak * base-penalty)
-          set confidence max list 0 (confidence - streak-penalty)
-          set size 0.5 + (confidence / 200)
+            set lose-streak lose-streak + 1
+            set win-streak 0  ; Reset win streak on loss
+            let base-penalty 2  ; Tunable parameter for streak penalty
+            let streak-penalty (lose-streak * base-penalty)
+            set confidence max list 0 (confidence - streak-penalty)
+            set size 0.5 + (confidence / 200)
+          ]
+          if not member? w_team team-history [ set team-history lput w_team team-history ]
         ]
-        if not member? w_team team-history [ set team-history lput w_team team-history ]
       ]
     ]
     if w_team = -1 [
       ; winner is neutral: do not join neutrality; stay on current team
       ; no change to team-id in this branch
     ]
-  ]
   ]
 end
 
@@ -450,6 +456,8 @@ to disband-weak-teams
                           [ next-available-team-color ]
                           [ pick-distinct-color 10 ])
         if not member? new-color team-list [ set team-list lput new-color team-list ]
+        if not is-list? team-history [ set team-history [] ]
+        if my-team != -1 and not member? my-team team-history [ set team-history lput my-team team-history ]
         set team-id new-color
         apply-team-color true
         ; Reset confidence to initial baseline on founding
@@ -460,6 +468,8 @@ to disband-weak-teams
       ]
       if roll >= prob [
         ; Become neutral with a confidence drop, then recover gradually
+        if not is-list? team-history [ set team-history [] ]
+        if my-team != -1 and not member? my-team team-history [ set team-history lput my-team team-history ]
         set team-id -1
         set breed followers
         set color white
@@ -640,7 +650,7 @@ end]]></code>
     <slider x="32" step="10" y="317" max="500" width="172" display="number-of-people" height="50" min="50" direction="Horizontal" default="250.0" variable="number-of-people"></slider>
     <slider x="33" step="1" y="388" max="6" width="172" display="initial-teams" height="50" min="2" direction="Horizontal" default="3.0" variable="initial-teams"></slider>
     <slider x="31" step="0.25" y="447" max="1" width="172" display="leader-boost-r" height="50" min="0" direction="Horizontal" default="0.25" variable="leader-boost-r"></slider>
-    <slider x="29" step="0.001" y="507" max="1" width="172" display="new-team-chance" height="50" min="0.001" direction="Horizontal" default="0.0" variable="new-team-chance"></slider>
+    <slider x="29" step="0.001" y="507" max="1" width="172" display="new-team-chance" height="50" min="0.001" direction="Horizontal" default="0.001" variable="new-team-chance"></slider>
     <slider x="27" step="0.25" y="570" max="1" width="172" display="weather-variable" height="50" min="0" direction="Horizontal" default="0.0" variable="weather-variable"></slider>
     <slider x="27" step="1" y="630" max="100" width="172" display="min-confidence" height="50" min="0" direction="Horizontal" default="20.0" variable="min-confidence"></slider>
     <slider x="27" step="1" y="690" max="100" width="172" display="max-confidence" height="50" min="0" direction="Horizontal" default="80.0" variable="max-confidence"></slider>
