@@ -554,32 +554,19 @@ to-report pick-distinct-color [min-gap]
 end
 
 to bounce-at-edges
-  ;; Robust bounce: reflect heading, nudge inside, add small random deflection, and step forward to avoid sticking
+  ;; Strong inward escape to eliminate wall jitter
   let eps 0.5
-  if xcor > max-pxcor [
-    ; move slightly inside and reflect horizontally
-    set xcor max-pxcor - eps
-    set heading (180 - heading)
-    set heading heading + (random-float 20 - 10)
-    forward 0.5
-  ]
-  if xcor < min-pxcor [
-    set xcor min-pxcor + eps
-    set heading (180 - heading)
-    set heading heading + (random-float 20 - 10)
-    forward 0.5
-  ]
-  if ycor > max-pycor [
-    set ycor max-pycor - eps
-    set heading (- heading)
-    set heading heading + (random-float 20 - 10)
-    forward 0.5
-  ]
-  if ycor < min-pycor [
-    set ycor min-pycor + eps
-    set heading (- heading)
-    set heading heading + (random-float 20 - 10)
-    forward 0.5
+  let xpush 0
+  let ypush 0
+  if xcor > max-pxcor [ set xcor max-pxcor - eps set xpush -1 ]
+  if xcor < min-pxcor [ set xcor min-pxcor + eps set xpush 1 ]
+  if ycor > max-pycor [ set ycor max-pycor - eps set ypush -1 ]
+  if ycor < min-pycor [ set ycor min-pycor + eps set ypush 1 ]
+  if (xpush != 0 or ypush != 0) [
+    let tx xcor + (xpush * 3)
+    let ty ycor + (ypush * 3)
+    set heading (towardsxy tx ty + (random-float 40 - 20))
+    forward 1.5
   ]
 end
 to update-team-plots
