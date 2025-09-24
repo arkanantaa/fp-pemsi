@@ -660,6 +660,10 @@ end
 to-report team-member-counts
   ;; Returns a list of member counts aligned with team-list
   report map [[t] -> count turtles with [team-id = t]] team-list
+end
+
+to-report neutral-count
+  report count turtles with [ team-id = -1 ]
 end]]></code>
   <widgets>
     <view x="210" wrappingAllowedX="true" y="10" frameRate="30.0" minPycor="-16" height="433" showTickCounter="true" patchSize="13.0" fontSize="10" wrappingAllowedY="true" width="433" tickCounterLabel="ticks" maxPycor="16" updateMode="0" maxPxcor="16" minPxcor="-16"></view>
@@ -668,7 +672,7 @@ end]]></code>
     <slider x="32" step="10" y="317" max="500" width="172" display="number-of-people" height="50" min="50" direction="Horizontal" default="250.0" variable="number-of-people"></slider>
     <slider x="33" step="1" y="388" max="6" width="172" display="initial-teams" height="50" min="2" direction="Horizontal" default="3.0" variable="initial-teams"></slider>
     <slider x="31" step="0.25" y="447" max="1" width="172" display="leader-boost-r" height="50" min="0" direction="Horizontal" default="0.25" variable="leader-boost-r"></slider>
-    <slider x="29" step="0.001" y="507" max="1" width="172" display="new-team-chance" height="50" min="0.001" direction="Horizontal" default="0.001" variable="new-team-chance"></slider>
+    <slider x="29" step="0.001" y="507" max="1" width="172" display="new-team-chance" height="50" min="0.001" direction="Horizontal" default="0.0" variable="new-team-chance"></slider>
     <slider x="27" step="0.25" y="570" max="1" width="172" display="weather-variable" height="50" min="0" direction="Horizontal" default="0.0" variable="weather-variable"></slider>
     <slider x="27" step="1" y="630" max="100" width="172" display="min-confidence" height="50" min="0" direction="Horizontal" default="20.0" variable="min-confidence"></slider>
     <slider x="27" step="1" y="690" max="100" width="172" display="max-confidence" height="50" min="0" direction="Horizontal" default="80.0" variable="max-confidence"></slider>
@@ -1572,166 +1576,4 @@ end]]></code>
     </shape>
   </linkShapes>
   <previewCommands>setup repeat 75 [ go ]</previewCommands>
-  <experiments>
-    <experiment name="experiment_confidence_0" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="false">
-      <setup>setup</setup>
-      <go>go</go>
-      <metrics>
-        <metric>length team-list</metric>
-        <metric>team-list</metric>
-        <metric>team-member-counts</metric>
-      </metrics>
-      <constants>
-        <enumeratedValueSet variable="number-of-people">
-          <value value="250"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="leader-boost-radius">
-          <value value="10"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="new-team-chance">
-          <value value="0.01"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="min-manipulation">
-          <value value="20"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="weather">
-          <value value="1"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="initial-teams">
-          <value value="2"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="min-confidence">
-          <value value="0"></value>
-        </enumeratedValueSet>
-      </constants>
-    </experiment>
-    <experiment name="experiment_confidence_25" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="false">
-      <setup>setup</setup>
-      <go>go</go>
-      <metrics>
-        <metric>length team-list</metric>
-        <metric>team-list</metric>
-        <metric>team-member-counts</metric>
-      </metrics>
-      <constants>
-        <enumeratedValueSet variable="number-of-people">
-          <value value="250"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="leader-boost-radius">
-          <value value="10"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="new-team-chance">
-          <value value="0.01"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="min-manipulation">
-          <value value="20"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="weather">
-          <value value="1"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="initial-teams">
-          <value value="2"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="min-confidence">
-          <value value="25"></value>
-        </enumeratedValueSet>
-      </constants>
-    </experiment>
-    <experiment name="experiment_confidence_50" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="false">
-      <setup>setup</setup>
-      <go>go</go>
-      <metrics>
-        <metric>length team-list</metric>
-        <metric>team-list</metric>
-        <metric>team-member-counts</metric>
-      </metrics>
-      <constants>
-        <enumeratedValueSet variable="number-of-people">
-          <value value="250"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="leader-boost-radius">
-          <value value="10"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="new-team-chance">
-          <value value="0.01"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="min-manipulation">
-          <value value="20"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="weather">
-          <value value="1"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="initial-teams">
-          <value value="2"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="min-confidence">
-          <value value="50"></value>
-        </enumeratedValueSet>
-      </constants>
-    </experiment>
-    <experiment name="experiment_confidence_75" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="false">
-      <setup>setup</setup>
-      <go>go</go>
-      <metrics>
-        <metric>length team-list</metric>
-        <metric>team-list</metric>
-        <metric>team-member-counts</metric>
-      </metrics>
-      <constants>
-        <enumeratedValueSet variable="number-of-people">
-          <value value="250"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="leader-boost-radius">
-          <value value="10"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="new-team-chance">
-          <value value="0.01"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="min-manipulation">
-          <value value="20"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="weather">
-          <value value="1"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="initial-teams">
-          <value value="2"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="min-confidence">
-          <value value="75"></value>
-        </enumeratedValueSet>
-      </constants>
-    </experiment>
-    <experiment name="experiment_confidence_100" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="false">
-      <setup>setup</setup>
-      <go>go</go>
-      <metrics>
-        <metric>length team-list</metric>
-        <metric>team-list</metric>
-        <metric>team-member-counts</metric>
-      </metrics>
-      <constants>
-        <enumeratedValueSet variable="number-of-people">
-          <value value="250"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="leader-boost-radius">
-          <value value="10"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="new-team-chance">
-          <value value="0.01"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="min-manipulation">
-          <value value="20"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="weather">
-          <value value="1"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="initial-teams">
-          <value value="2"></value>
-        </enumeratedValueSet>
-        <enumeratedValueSet variable="min-confidence">
-          <value value="100"></value>
-        </enumeratedValueSet>
-      </constants>
-    </experiment>
-  </experiments>
 </model>
