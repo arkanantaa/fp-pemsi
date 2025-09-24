@@ -31,7 +31,7 @@ turtles-own [
   disband-timer             ; Timer for disbandment
   dueled-this-tick          ; Flag to ensure at most one duel per tick
   boosted-by                ; Temporary confidence added by leader aura this tick
-  loss-streak               ; Consecutive losses without successful switch/found
+  lose-streak               ; Counter for consecutive losses
 ]
 
 to setup
@@ -89,7 +89,7 @@ to create-people [num]
     ; Set size based on confidence
     set size 0.5 + (confidence / 200)
     set disband-timer 0
-    set loss-streak 0
+    set lose-streak 0
   ]
 end
 
@@ -313,10 +313,14 @@ to resolve-loss [ loser winner ]
   if prob < 0 [ set prob 0 ]
   if prob > 1 [ set prob 1 ]
 
-  ; Neutral abstain logic:
-  ; Previously: neutral loser always joined a team winner. Now:
-  ; join-prob = neutral-join-base * damage-factor * environmental-modifier
-  ; damage-factor approximated here by relative shortfall (l_manip < w_conf) proxy using (w_team != -1) and diff
+  ; Winner gains confidence, capped at their initial baseline
+  ask winner [
+    set confidence min list initial-confidence (confidence + 5)
+    set lose-streak 0  ; Reset lose streak on win
+    set size 0.5 + (confidence / 200)
+  ]
+
+  ; If loser is neutral and winner has a team, instantly join winner's team
   if (l_team = -1 and w_team != -1) [
     let winner-conf [confidence] of winner
     let raw-gap max list 0 (winner-conf - l_conf)
@@ -367,9 +371,12 @@ to resolve-loss [ loser winner ]
         set team-id w_team
         set breed followers
         apply-team-color false
-        ; Confidence decreases only when switching from a team to another team
+        ; Confidence decreases based on lose streak (progressive penalty)
         if l_team != -1 [
-          set confidence max list 0 (confidence - 10)
+          set lose-streak lose-streak + 1
+          let base-penalty 2  ; Tunable parameter for streak penalty
+          let streak-penalty (lose-streak * base-penalty)
+          set confidence max list 0 (confidence - streak-penalty)
           set size 0.5 + (confidence / 200)
         ]
       ]
