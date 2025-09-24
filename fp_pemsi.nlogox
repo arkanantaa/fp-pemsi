@@ -12,6 +12,9 @@
   counted-teams-3          ; List of team colors already counted towards >=3
   confidence-recovery-rate ; Amount of confidence regained per tick when below baseline
   disband-confidence-threshold ; Leader confidence threshold to trigger immediate disband
+  neutral-join-base         ; Base probability neutral loser adopts winner team
+  switches-this-tick          ; Count of team changes this tick
+  total-switches              ; Cumulative team changes across run
   ]
 
 breed [leaders leader]
@@ -28,6 +31,7 @@ turtles-own [
   disband-timer             ; Timer for disbandment
   dueled-this-tick          ; Flag to ensure at most one duel per tick
   boosted-by                ; Temporary confidence added by leader aura this tick
+  loss-streak               ; Consecutive losses without successful switch/found
 ]
 
 to setup
@@ -44,6 +48,9 @@ to setup
   set counted-teams-3 []
   set confidence-recovery-rate 5
   set disband-confidence-threshold 50
+  set neutral-join-base 0.5  ;; neutrals join 60% baseline when they lose to a team (modifiable)
+  set switches-this-tick 0
+  set total-switches 0
   ; Initialize a high-contrast palette (NetLogo 0-140 color wheel, spaced hues)
   ; Use a palette that avoids white/gray/black for visibility on dark background
   set distinct-team-palette [15 25 35 45 55 65 75 85 95 105 115 125 135
@@ -82,6 +89,7 @@ to create-people [num]
     ; Set size based on confidence
     set size 0.5 + (confidence / 200)
     set disband-timer 0
+    set loss-streak 0
   ]
 end
 
@@ -305,12 +313,31 @@ to resolve-loss [ loser winner ]
   if prob < 0 [ set prob 0 ]
   if prob > 1 [ set prob 1 ]
 
-  ; If loser is neutral and winner has a team, instantly join winner's team
+  ; Neutral abstain logic:
+  ; Previously: neutral loser always joined a team winner. Now:
+  ; join-prob = neutral-join-base * damage-factor * environmental-modifier
+  ; damage-factor approximated here by relative shortfall (l_manip < w_conf) proxy using (w_team != -1) and diff
   if (l_team = -1 and w_team != -1) [
-    ask loser [
-      set team-id w_team
-      set breed followers
-      apply-team-color false
+    let winner-conf [confidence] of winner
+    let raw-gap max list 0 (winner-conf - l_conf)
+    ; scale gap to 0..1 by dividing with maximal-confidence
+    let gap-factor raw-gap / maximal-confidence
+    let join-prob neutral-join-base * gap-factor * environmental-modifier
+    if join-prob > 1 [ set join-prob 1 ]
+    if join-prob < 0.05 [ set join-prob 0.05 ]  ; minimal adoption pressure
+    if random-float 1 < join-prob [
+      ask loser [
+        set team-id w_team
+        set breed followers
+        apply-team-color false
+        set loss-streak 0
+      ]
+      set switches-this-tick switches-this-tick + 1
+      set total-switches total-switches + 1
+    ]
+    if random-float 1 >= join-prob [
+      ; abstain: remain neutral, accumulate loss-streak (increases future founding chance)
+      ask loser [ set loss-streak loss-streak + 1 ]
     ]
     stop
   ]
