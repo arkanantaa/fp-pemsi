@@ -1,68 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <model version="NetLogo 7.0.0" snapToGrid="false">
   <code><![CDATA[globals [
-  team-list                ; List of active team colors
-  environmental-modifier   ; Weather effect multiplier (0.5-1.0)
-  weather                  ; Weather slider value (0..1)
-  leader-boost-radius      ; Normalized 0..1 (effective radius 2..10)
-  maximal-confidence       ; Fixed upper cap for confidence (set in setup)
-  maximal-manipulation     ; Fixed upper cap for manipulation (set in setup)
-  distinct-team-palette    ; Fixed palette for distinct team colors
-  total-teams-reached-3    ; Lifetime count of teams that ever had >=3 members
-  counted-teams-3          ; List of team colors already counted towards >=3
-  confidence-recovery-rate ; Amount of confidence regained per tick when below baseline
-  disband-confidence-threshold ; Leader confidence threshold to trigger immediate disband
-  neutral-join-base         ; Base probability neutral loser adopts winner team
-  switches-this-tick          ; Count of team changes this tick
-  total-switches              ; Cumulative team changes across run
+  team-list                
+  environmental-modifier   
+  weather                 
+  leader-boost-radius      
+  maximal-confidence       
+  maximal-manipulation    
+  distinct-team-palette    
+  total-teams-reached-3   
+  counted-teams-3          
+  confidence-recovery-rate 
+  disband-confidence-threshold 
+  neutral-join-base         
+  switches-this-tick          
+  total-switches              
   ]
 
 breed [leaders leader]
 breed [followers follower]
 
-; Variables for both leaders and followers
 turtles-own [
-  team-id                   ; Color representing team affiliation
-  confidence                ; Strength of belief in team (0-100)
-  initial-confidence        ; The agent's initial confidence at creation
-  manipulation              ; Ability to influence others (0-100)
-  speed                     ; Movement speed per tick
-  persuasions-this-tick     ; Count of successful persuasions credited this tick
-  disband-timer             ; Timer for disbandment
-  dueled-this-tick          ; Flag to ensure at most one duel per tick
-  boosted-by                ; Temporary confidence added by leader aura this tick
-  lose-streak               ; Counter for consecutive losses
-  win-streak                ; Counter for consecutive wins
-  team-history              ; List of previously joined team-ids (for rejoin resistance / memory)
+  team-id                   
+  confidence                
+  initial-confidence        
+  manipulation              
+  speed                     
+  persuasions-this-tick     
+  disband-timer             
+  dueled-this-tick          
+  boosted-by                
+  lose-streak               
+  win-streak                
+  team-history              
 ]
 
 to setup
   clear-all
   set-default-shape turtles "person"
 
-  ; Initialize global variables
   set team-list []
   set environmental-modifier 1.0
-  ; Set fixed maxima (replaces sliders)
   set maximal-confidence 100
   set maximal-manipulation 100
   set total-teams-reached-3 0
   set counted-teams-3 []
   set confidence-recovery-rate 5
   set disband-confidence-threshold 50
-  set neutral-join-base 0.5  ;; neutrals join 60% baseline when they lose to a team (modifiable)
+  set neutral-join-base 0.5  
   set switches-this-tick 0
   set total-switches 0
-  ; Initialize a bright, high-contrast palette (avoid dark/gray/white bands)
   set distinct-team-palette [15 25 35 45 55 65 75 85 95 115 135 125 30 50 70 90 110 130]
 
-  ; Create the entire population as followers with no team
   create-people number-of-people
 
-  ; Select and promote the top 3 as leaders
   promote-top-leaders
 
-  ; Update environmental modifier based on weather
     sync-ui-variables
     update-environment
 
@@ -70,54 +63,44 @@ to setup
 end
 
 to create-people [num]
-  ; Create population of followers with no initial team (use numeric sentinel -1)
   create-followers num [
     setxy random-xcor random-ycor
 
-    ; No team initially: use -1 (numeric) to avoid string color errors
     set team-id -1
     set color white
 
-  ; Assign random attributes (initialized using sliders as minima)
   let conf-range max list 0 (max-confidence - min-confidence)
   set confidence min-confidence + (ifelse-value conf-range > 0 [ random (conf-range + 1) ] [ 0 ])
-  set initial-confidence confidence                              ; remember initial value
+  set initial-confidence confidence                              
   let manip-range max list 0 (max-manipulation - min-manipulation)
   set manipulation min-manipulation + (ifelse-value manip-range > 0 [ random (manip-range + 1) ] [ 0 ])
     set speed 0.1 + random-float 0.4 ; 0.1-0.5
 
-    ; Set size based on confidence
     set size 0.5 + (confidence / 200)
     set disband-timer 0
     set lose-streak 0
     set win-streak 0
-    set team-history []    ;; IMPORTANT: initialize as empty list (prevents member? on 0 error)
+    set team-history []    
   ]
 end
 
 to promote-top-leaders
-  ; Generate colors dynamically based on initial-teams slider
-  let color-options [15 55 25 85 45 135 95 115] ; Pool of bright distinct colors
+  let color-options [15 55 25 85 45 135 95 115] 
   let initial-colors []
   repeat initial-teams [
     set initial-colors lput (item (length initial-colors) color-options) initial-colors
   ]
 
-  ; Find the top followers based on slider value
   let potential-leaders max-n-of initial-teams followers [confidence + manipulation]
 
-  ; Promote them to leaders and assign teams
   let i 0
   ask potential-leaders [
     let new-team-color item i initial-colors
 
-    ; Change breed to leader
     set breed leaders
 
-    ; Assign team
     set team-id new-team-color
   apply-team-color true
-    ; Record first team affiliation in history for memory mechanics
     set team-history (list new-team-color)
     set team-list lput new-team-color team-list
 
@@ -129,62 +112,42 @@ to promote-top-leaders
 end
 
 to go
-  ; Update environment based on weather
     sync-ui-variables
     update-environment
 
-  ; Reset per-tick persuasion counters
   reset-persuasion-flags
-  ; Reset per-tick duel flags
   reset-duel-flags
 
-  ; Revert last tick's temporary leader boosts before applying new ones
   reset-boost-state
 
-  ; Movement phase
   ask turtles [
     move-agent
   ]
 
-  ; Leader actions
   ask leaders [
     boost-confidence
   ]
 
-  ; Follower actions (one-on-one duels instead of radius-based influence)
   duel-phase
 
-  ; Apply persuasion failure penalties
   apply-persuasion-failure-penalties
 
-  ; Ensure each team has the highest-confidence turtle as leader
   reassign-leaders
 
-  ; Update lifetime counter for teams that have ever reached >=3 members
   update-teams-reached-3
 
-  ; Disband weak teams (by timer or low leader confidence)
   disband-weak-teams
 
-  ; Remove teams with zero members from active team list
   prune-empty-teams
 
-  ; Gradual confidence recovery towards initial-confidence baseline
   recover-confidence-phase
 
-  ; Update visuals
   update-team-plots
 
   tick
 end
 
 to update-environment
-  ;; Weather scale 0..1 step 0.25
-  ;; 0.00 = Ideal (x1.0)
-  ;; 0.25 = Difficult Lv1 (x0.8)
-  ;; 0.50 = Difficult Lv2 (x0.6)
-  ;; 0.75 = Difficult Lv3 (x0.4)
-  ;; 1.00 = Maximum Difficulty (x0.2)
   if weather <= 0 [ set environmental-modifier 1.0 ]
   if weather > 0 and weather <= 0.25 [ set environmental-modifier 0.8 ]
   if weather > 0.25 and weather <= 0.5 [ set environmental-modifier 0.6 ]
@@ -193,29 +156,22 @@ to update-environment
 end
 
   to sync-ui-variables
-    ;; Bridge UI slider names to model globals when present
     carefully [ set weather weather-variable ] [ ]
     carefully [ set leader-boost-radius leader-boost-r ] [ ]
   end
 to move-agent
-  ; Random movement based on speed
   right random 60 - 30
   forward (speed * environmental-modifier)
-  ; Keep agents inside visible world by bouncing at edges
   bounce-at-edges
 end
 
-; LEADER PROCEDURES
 to boost-confidence
-  ; Leaders boost confidence of same-team followers within effective radius
   let my-team team-id
-  ; Interpret leader-boost-radius as normalized [0..1], map to [2..10]
   let effective-radius 2 + (8 * leader-boost-radius)
   if effective-radius < 2 [ set effective-radius 2 ]
   if effective-radius > 10 [ set effective-radius 10 ]
   let nearby-followers followers in-radius effective-radius with [team-id = my-team]
 
-  ; Apply a reversible +5 confidence boost to nearby same-team followers
   ask nearby-followers [
     let inc min list 5 (maximal-confidence - confidence)
     if inc > 0 [
@@ -226,28 +182,23 @@ to boost-confidence
   ]
 end
 
-; FOLLOWER PROCEDURES (Removed radius-based mechanics; duels handle changes)
 
-; --- PERSUASION SUPPORT PROCEDURES ---
 to reset-persuasion-flags
   ask turtles [ set persuasions-this-tick 1 ]
 end
 
 to apply-persuasion-failure-penalties
-  ; Any agent with a team who persuaded no one this tick loses 0.2 confidence
   ask turtles with [team-id != -1 and persuasions-this-tick = 0] [
     set confidence max list 0 (confidence - 0.2)
     set size 0.5 + (confidence / 200)
   ]
 end
 
-; --- DUEL MECHANICS ---
 to reset-duel-flags
   ask turtles [ set dueled-this-tick false ]
 end
 
 to reset-boost-state
-  ; Remove temporary leader aura boosts applied in the previous tick
   ask turtles with [boosted-by > 0] [
     set confidence max list 0 (confidence - boosted-by)
     set boosted-by 0
@@ -256,15 +207,11 @@ to reset-boost-state
 end
 
 to duel-phase
-  ; Pair up random turtles that haven't dueled this tick
   let shuffled shuffle sort turtles
   foreach shuffled [ a ->
     if [dueled-this-tick] of a = false [
-      ; Only duel with agents from a different team; prevents friendly fire.
-      ; Allows team vs neutral (-1) but disallows neutral vs neutral.
       let opponent one-of turtles with [ self != a and dueled-this-tick = false and team-id != [team-id] of a ]
       if opponent != nobody [
-        ; Weather gate: harsh weather reduces duel occurrence
         if random-float 1 < environmental-modifier [
           ask a [ set dueled-this-tick true ]
           ask opponent [ set dueled-this-tick true ]
@@ -276,7 +223,6 @@ to duel-phase
 end
 
 to resolve-duel [ a b ]
-  ; Compute received damage as enemyManipulative - myConfidence (no environment scaling)
   let a_conf [confidence] of a
   let b_conf [confidence] of b
   let a_manip [manipulation] of a
@@ -286,15 +232,12 @@ to resolve-duel [ a b ]
   let b_received max list 0 (a_manip - b_conf)
 
   if a_received < b_received [
-    ; A wins, B loses
     resolve-loss b a
   ]
   if a_received > b_received [
-    ; B wins, A loses
     resolve-loss a b
   ]
   if a_received = b_received [
-    ; tie-breaker: higher manipulation wins; if still tie, pick random
     if a_manip > b_manip [ resolve-loss b a ]
     if b_manip > a_manip [ resolve-loss a b ]
     if a_manip = b_manip [
@@ -308,7 +251,6 @@ to resolve-duel [ a b ]
 end
 
 to resolve-loss [ loser winner ]
-  ; After losing, agent either creates new team with probability or joins winner team
   let l_conf [confidence] of loser
   let l_manip [manipulation] of loser
   let l_team [team-id] of loser
@@ -317,31 +259,28 @@ to resolve-loss [ loser winner ]
   if prob < 0 [ set prob 0 ]
   if prob > 1 [ set prob 1 ]
 
-  ; Winner gains confidence with win streak bonus
   ask winner [
     set win-streak win-streak + 1
-    set lose-streak 0  ; Reset lose streak on win
-    let base-bonus 2  ; Same parameter as lose streak for symmetry
+    set lose-streak 0 
+    let base-bonus 2  
     let streak-bonus (win-streak * base-bonus)
     set confidence min list maximal-confidence (confidence + streak-bonus)
     set size 0.5 + (confidence / 200)
   ]
 
-  ; If loser is neutral and winner has a team, instantly join winner's team
   if (l_team = -1 and w_team != -1) [
     let winner-conf [confidence] of winner
     let raw-gap max list 0 (winner-conf - l_conf)
-    ; scale gap to 0..1 by dividing with maximal-confidence
     let gap-factor raw-gap / maximal-confidence
     let join-prob neutral-join-base * gap-factor * environmental-modifier
     if join-prob > 1 [ set join-prob 1 ]
-    if join-prob < 0.05 [ set join-prob 0.05 ]  ; minimal adoption pressure
+    if join-prob < 0.05 [ set join-prob 0.05 ]  
     if random-float 1 < join-prob [
       ask loser [
         if not is-list? team-history [ set team-history [] ]
         set team-id w_team
         set breed followers
-        set win-streak 0  ; Reset win streak on loss
+        set win-streak 0  
         apply-team-color false
         if not member? w_team team-history [ set team-history lput w_team team-history ]
         set lose-streak 0
@@ -350,7 +289,6 @@ to resolve-loss [ loser winner ]
       set total-switches total-switches + 1
     ]
     if random-float 1 >= join-prob [
-      ; abstain: remain neutral, accumulate lose-streak (increases future founding chance)
       ask loser [ set lose-streak lose-streak + 1 ]
     ]
     stop
@@ -358,7 +296,6 @@ to resolve-loss [ loser winner ]
 
   let roll random-float 1
   if roll < prob [
-    ; create new team (become leader)
     ask loser [
       if not is-list? team-history [ set team-history [] ]
       let new-color (ifelse-value (length team-list < length distinct-team-palette)
@@ -368,20 +305,16 @@ to resolve-loss [ loser winner ]
       set breed leaders
       set team-id new-color
       apply-team-color true
-      ; Reset confidence to initial baseline on founding
       set confidence initial-confidence
-      ; Reset streaks on fresh start as leader
       set lose-streak 0
       set win-streak 0
       set size 0.5 + (confidence / 200)
-      ; Founding grace: delay disband logic to allow recruitment
       set disband-timer -24
       if not member? new-color team-history [ set team-history lput new-color team-history ]
     ]
   ]
   if roll >= prob [
     if w_team != -1 [
-      ; join winner's team (only if winner has a team)
       ask loser [
         if not is-list? team-history [ set team-history [] ]
         let resist-multiplier (ifelse-value (member? w_team team-history) [0.2] [1.0])
@@ -389,11 +322,10 @@ to resolve-loss [ loser winner ]
           set team-id w_team
           set breed followers
           apply-team-color false
-          ; Confidence decreases based on lose streak (progressive penalty)
           if l_team != -1 [
             set lose-streak lose-streak + 1
-            set win-streak 0  ; Reset win streak on loss
-            let base-penalty 2  ; Tunable parameter for streak penalty
+            set win-streak 0  
+            let base-penalty 2  
             let streak-penalty (lose-streak * base-penalty)
             set confidence max list 0 (confidence - streak-penalty)
             set size 0.5 + (confidence / 200)
@@ -403,24 +335,19 @@ to resolve-loss [ loser winner ]
       ]
     ]
     if w_team = -1 [
-      ; winner is neutral: do not join neutrality; stay on current team
-      ; no change to team-id in this branch
     ]
   ]
 end
 
-; --- LEADER MANAGEMENT ---
 to reassign-leaders
   foreach team-list [ tcol ->
     let members turtles with [team-id = tcol]
     if any? members [
       let new-leader max-one-of members [confidence]
-      ; Promote highest-confidence turtle
       ask new-leader [
         set breed leaders
         apply-team-color true
       ]
-      ; Demote all other members to followers
       ask (members with [self != new-leader]) [
         set breed followers
         apply-team-color false
@@ -430,17 +357,14 @@ to reassign-leaders
 end
 
 to disband-weak-teams
-  ; Leaders with zero followers accumulate time; after 168 ticks, try to found a new team or go neutral
   ask leaders [
     let my-team team-id
     let follower-count count followers with [team-id = my-team]
-    ; Grace period: negative timer counts toward 0, skip checks
     if disband-timer < 0 [ set disband-timer disband-timer + 1 ]
     if disband-timer >= 0 and follower-count = 0 [ set disband-timer disband-timer + 1 ]
     if follower-count > 0 [ set disband-timer 0 ]
 
     if disband-timer >= 168 [
-      ; Try to found a new team based on probability, else become neutral
       let l_conf confidence
       let l_manip manipulation
       let prob ((l_manip - l_conf) / 100) * new-team-chance
@@ -449,7 +373,6 @@ to disband-weak-teams
 
       let roll random-float 1
       if roll < prob [
-        ; Found a new team (change to a fresh color)
         let new-color (ifelse-value (length team-list < length distinct-team-palette)
                           [ next-available-team-color ]
                           [ pick-distinct-color 10 ])
@@ -458,14 +381,11 @@ to disband-weak-teams
         if my-team != -1 and not member? my-team team-history [ set team-history lput my-team team-history ]
         set team-id new-color
         apply-team-color true
-        ; Reset confidence to initial baseline on founding
         set confidence initial-confidence
         set size 0.5 + (confidence / 200)
-        ; Founding grace: delay disband logic to allow recruitment
         set disband-timer -24
       ]
       if roll >= prob [
-        ; Become neutral with a confidence drop, then recover gradually
         if not is-list? team-history [ set team-history [] ]
         if my-team != -1 and not member? my-team team-history [ set team-history lput my-team team-history ]
         set team-id -1
@@ -476,34 +396,25 @@ to disband-weak-teams
         set disband-timer 0
       ]
 
-      ; Clean up old team color if no members remain
       let remaining count turtles with [team-id = my-team]
       if remaining = 0 [ set team-list remove my-team team-list ]
     ]
   ]
 end
 
-; attempt-to-create-new-team removed: creation happens only via duel loss rule
 
 to-report mix-colors [color1 color2]
-  ; Robust color mixing to produce a distinct, valid NetLogo color
-  ; Guard against unassigned color (-1) by using partner's color as base
   let base1 (ifelse-value color1 = -1 [ color2 ] [ color1 ])
   let base2 color2
 
-  ; Compute a midpoint hue with wrap-around on NetLogo's 0-140 color wheel
   let raw-mix ( (base1 + base2) / 2 )
-  ; Add a small random offset to avoid duplicates and increase distinction
   let mixed-color raw-mix + (10 + random 20)
 
-  ; Normalize into 0-140 color wheel range
   while [mixed-color < 0] [ set mixed-color mixed-color + 140 ]
   while [mixed-color >= 140] [ set mixed-color mixed-color - 140 ]
 
-  ; Avoid black/dark gray segment for visibility
   if mixed-color < 12 [ set mixed-color mixed-color + 20 ]
 
-  ; Ensure distinct from base and existing teams; perturb until unique
   while [ (abs(mixed-color - base1) < 1) or member? mixed-color team-list ] [
     set mixed-color mixed-color + (5 + random 20)
     while [mixed-color >= 140] [ set mixed-color mixed-color - 140 ]
@@ -514,7 +425,6 @@ to-report mix-colors [color1 color2]
 end
 
 to-report get-team-ids-display
-  ;; Simple approach: build team display string with foreach
   let result "Teams: "
   foreach team-list [ t ->
     set result word result (word "[" t "] ")
@@ -523,7 +433,6 @@ to-report get-team-ids-display
 end
 
 to-report get-team-members-display
-  ;; Use visual separators since monitors don't support newlines
   let result ""
   foreach team-list [ t ->
     let member-count count turtles with [team-id = t]
@@ -533,7 +442,6 @@ to-report get-team-members-display
 end
 
 to-report count-teams-with-min-members [k]
-  ;; Count how many ACTIVE teams currently have at least k members
   let n 0
   foreach team-list [ t ->
     if (count turtles with [team-id = t] >= k) [ set n n + 1 ]
@@ -542,7 +450,6 @@ to-report count-teams-with-min-members [k]
 end
 
 to update-teams-reached-3
-  ;; If an active team reaches >=3 members and hasn't been counted before, record it (lifetime, non-decreasing)
   foreach team-list [ t ->
     if (count turtles with [team-id = t] >= 3) and (not member? t counted-teams-3) [
       set counted-teams-3 lput t counted-teams-3
@@ -551,9 +458,7 @@ to update-teams-reached-3
   ]
 end
 
-; UTILITY PROCEDURES
 to recover-confidence-phase
-  ;; Gradually recover confidence up to initial-confidence baseline
   ask turtles [
     if confidence < initial-confidence [
       set confidence min list initial-confidence (confidence + confidence-recovery-rate)
@@ -562,7 +467,6 @@ to recover-confidence-phase
   ]
 end
 to prune-empty-teams
-  ;; Remove any team color from team-list with zero members
   let to-remove []
   foreach team-list [ t ->
     if (count turtles with [team-id = t] = 0) [ set to-remove lput t to-remove ]
@@ -573,34 +477,27 @@ to prune-empty-teams
 end
 
 to-report enforce-visible-color [c]
-  ;; Normalize and shift hue away from dark/white for visibility on black background
   while [c >= 140] [ set c c - 140 ]
   while [c < 0] [ set c c + 140 ]
-  ;; Avoid grayscale/dark band near 0..11 (includes black/gray and near-white 9.9)
   if member? (floor c) [0 1 2 3 4 5 6 7 8 9 10 11] [ set c c + 20 ]
   while [c >= 140] [ set c c - 140 ]
   report c
 end
 
 to-report bright-team-color [h is-leader]
-  ;; Snap to base hue and apply a bright shade offset; leaders a bit brighter
   let b (round (h / 10)) * 10
   while [b >= 140] [ set b b - 140 ]
   while [b < 0] [ set b b + 140 ]
-  ;; Avoid very low hues that trend dark on black backgrounds
   if b < 12 [ set b 15 ]
   let shade (ifelse-value is-leader [ 6 ] [ 4 ])
   let cc b + shade
-  ;; Avoid exact white constant and normalize
   if cc = white [ set cc b + (shade - 2) ]
   while [cc >= 140] [ set cc cc - 140 ]
   while [cc < 0] [ set cc cc + 140 ]
-  ;; Final pass through visibility guard in case of edge cases
   report enforce-visible-color cc
 end
 
 to apply-team-color [is-leader]
-  ;; Apply a consistent, high-contrast color scheme (white only for neutral)
   if team-id = -1 [ set color white stop ]
   let base team-id
   let c bright-team-color base is-leader
@@ -608,16 +505,13 @@ to apply-team-color [is-leader]
 end
 
 to-report next-available-team-color
-  ;; Return first unused color from the fixed palette
   foreach distinct-team-palette [ c ->
     if not member? c team-list [ report c ]
   ]
-  ; If palette is somehow fully used, fallback to a distinct pick
   report pick-distinct-color 10
 end
 
 to-report pick-distinct-color [min-gap]
-  ;; Pick a hue in [0,140) that is at least min-gap away from every color in team-list
   let attempts 0
   let c random 140
   while [ attempts < 200
@@ -627,13 +521,11 @@ to-report pick-distinct-color [min-gap]
     set c random 140
     set attempts attempts + 1
   ]
-  ; Avoid dark hues; shift into brighter band if needed
   if c < 12 [ set c c + 20 ]
   report c
 end
 
 to bounce-at-edges
-  ;; Strong inward escape to eliminate wall jitter
   let eps 0.5
   let xpush 0
   let ypush 0
@@ -649,16 +541,13 @@ to bounce-at-edges
   ]
 end
 to update-team-plots
-  ; Update team population plot - simplified version
   set-current-plot "Team Population"
 
-  ; Plot total number of teams
   let total-agents count turtles
   plot total-agents
 end
 
 to-report team-member-counts
-  ;; Returns a list of member counts aligned with team-list
   report map [[t] -> count turtles with [team-id = t]] team-list
 end
 
