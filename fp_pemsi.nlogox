@@ -334,14 +334,14 @@ to resolve-loss [ loser winner ]
         set team-id w_team
         set breed followers
         apply-team-color false
-        set loss-streak 0
+        set lose-streak 0
       ]
       set switches-this-tick switches-this-tick + 1
       set total-switches total-switches + 1
     ]
     if random-float 1 >= join-prob [
-      ; abstain: remain neutral, accumulate loss-streak (increases future founding chance)
-      ask loser [ set loss-streak loss-streak + 1 ]
+      ; abstain: remain neutral, accumulate lose-streak (increases future founding chance)
+      ask loser [ set lose-streak lose-streak + 1 ]
     ]
     stop
   ]
