@@ -574,18 +574,22 @@ to prune-empty-teams
   ]
 end
 
+to-report enforce-visible-color [c]
+  ;; Normalize and shift hue away from dark/white for visibility on black background
+  while [c >= 140] [ set c c - 140 ]
+  while [c < 0] [ set c c + 140 ]
+  ;; Avoid grayscale/dark band near 0..11 (includes black/gray and near-white 9.9)
+  if member? (floor c) [0 1 2 3 4 5 6 7 8 9 10 11] [ set c c + 20 ]
+  while [c >= 140] [ set c c - 140 ]
+  report c
+end
+
 to apply-team-color [is-leader]
-  ;; Apply a consistent color scheme for teams with optional vivid mode
+  ;; Apply a consistent, high-contrast color scheme (white only for neutral)
   if team-id = -1 [ set color white stop ]
   let base team-id
   let c (ifelse-value is-leader [ base + 2 ] [ base ])
-  ; Normalize to color wheel
-  while [c >= 140] [ set c c - 140 ]
-  while [c < 0] [ set c c + 140 ]
-  ; Avoid white for any non-neutral agent
-  if c = white [ set c c + 5 ]
-  ; Avoid black/dark gray (very low brightness) by shifting hue
-  if member? (floor c) [0 1 2 3 4 5 6 7 8 9 10] [ set c c + 20 ]
+  set c enforce-visible-color c
   set color c
 end
 
