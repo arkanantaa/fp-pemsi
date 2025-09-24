@@ -42,7 +42,7 @@ to setup
   set maximal-manipulation 100
   set total-teams-reached-3 0
   set counted-teams-3 []
-  set confidence-recovery-rate 0.5
+  set confidence-recovery-rate 5
   set disband-confidence-threshold 50
   ; Initialize a high-contrast palette (NetLogo 0-140 color wheel, spaced hues)
   ; Use a palette that avoids white/gray/black for visibility on dark background
@@ -56,7 +56,8 @@ to setup
   promote-top-leaders
 
   ; Update environmental modifier based on weather
-  update-environment
+    sync-ui-variables
+    update-environment
 
   reset-ticks
 end
@@ -117,7 +118,8 @@ end
 
 to go
   ; Update environment based on weather
-  update-environment
+    sync-ui-variables
+    update-environment
 
   ; Reset per-tick persuasion counters
   reset-persuasion-flags
@@ -178,10 +180,15 @@ to update-environment
   if weather > 0.75 [ set environmental-modifier 0.2 ]
 end
 
+  to sync-ui-variables
+    ;; Bridge UI slider names to model globals when present
+    carefully [ set weather weather-variable ] [ ]
+    carefully [ set leader-boost-radius leader-boost-r ] [ ]
+  end
 to move-agent
   ; Random movement based on speed
   right random 60 - 30
-  forward speed
+  forward (speed * environmental-modifier)
   ; Keep agents inside visible world by bouncing at edges
   bounce-at-edges
 end
@@ -245,9 +252,12 @@ to duel-phase
       ; Allows team vs neutral (-1) but disallows neutral vs neutral.
       let opponent one-of turtles with [ self != a and dueled-this-tick = false and team-id != [team-id] of a ]
       if opponent != nobody [
-        ask a [ set dueled-this-tick true ]
-        ask opponent [ set dueled-this-tick true ]
-        resolve-duel a opponent
+        ; Weather gate: harsh weather reduces duel occurrence
+        if random-float 1 < environmental-modifier [
+          ask a [ set dueled-this-tick true ]
+          ask opponent [ set dueled-this-tick true ]
+          resolve-duel a opponent
+        ]
       ]
     ]
   ]
@@ -316,6 +326,9 @@ to resolve-loss [ loser winner ]
       set breed leaders
       set team-id new-color
       apply-team-color true
+      ; Reset confidence to initial baseline on founding
+      set confidence initial-confidence
+      set size 0.5 + (confidence / 200)
       ; Founding grace: delay disband logic to allow recruitment
       set disband-timer -24
     ]
@@ -388,6 +401,9 @@ to disband-weak-teams
         if not member? new-color team-list [ set team-list lput new-color team-list ]
         set team-id new-color
         apply-team-color true
+        ; Reset confidence to initial baseline on founding
+        set confidence initial-confidence
+        set size 0.5 + (confidence / 200)
         ; Founding grace: delay disband logic to allow recruitment
         set disband-timer -24
       ]
