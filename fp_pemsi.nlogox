@@ -32,6 +32,7 @@ turtles-own [
   dueled-this-tick          ; Flag to ensure at most one duel per tick
   boosted-by                ; Temporary confidence added by leader aura this tick
   lose-streak               ; Counter for consecutive losses
+  team-history              ; 
 ]
 
 to setup
@@ -334,6 +335,7 @@ to resolve-loss [ loser winner ]
         set team-id w_team
         set breed followers
         apply-team-color false
+        if not member? w_team team-history [ set team-history lput w_team team-history ]
         set lose-streak 0
       ]
       set switches-this-tick switches-this-tick + 1
@@ -362,6 +364,7 @@ to resolve-loss [ loser winner ]
       set size 0.5 + (confidence / 200)
       ; Founding grace: delay disband logic to allow recruitment
       set disband-timer -24
+      if not member? new-color team-history [ set team-history lput new-color team-history ]
     ]
   ]
   if roll >= prob [
@@ -379,6 +382,7 @@ to resolve-loss [ loser winner ]
           set confidence max list 0 (confidence - streak-penalty)
           set size 0.5 + (confidence / 200)
         ]
+        if not member? w_team team-history [ set team-history lput w_team team-history ]
       ]
     ]
     if w_team = -1 [
