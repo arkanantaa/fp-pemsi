@@ -316,6 +316,8 @@ to resolve-loss [ loser winner ]
       set breed leaders
       set team-id new-color
       apply-team-color true
+      ; Founding grace: delay disband logic to allow recruitment
+      set disband-timer -24
     ]
   ]
   if roll >= prob [
@@ -364,10 +366,12 @@ to disband-weak-teams
   ask leaders [
     let my-team team-id
     let follower-count count followers with [team-id = my-team]
-    if follower-count = 0 [ set disband-timer disband-timer + 1 ]
+    ; Grace period: negative timer counts toward 0, skip checks
+    if disband-timer < 0 [ set disband-timer disband-timer + 1 ]
+    if disband-timer >= 0 and follower-count = 0 [ set disband-timer disband-timer + 1 ]
     if follower-count > 0 [ set disband-timer 0 ]
 
-    if disband-timer >= 1000 [
+    if disband-timer >= 168 [
       ; Try to found a new team based on probability, else become neutral
       let l_conf confidence
       let l_manip manipulation
@@ -384,7 +388,8 @@ to disband-weak-teams
         if not member? new-color team-list [ set team-list lput new-color team-list ]
         set team-id new-color
         apply-team-color true
-        set disband-timer 0
+        ; Founding grace: delay disband logic to allow recruitment
+        set disband-timer -24
       ]
       if roll >= prob [
         ; Become neutral with a confidence drop, then recover gradually
