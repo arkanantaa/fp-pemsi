@@ -32,6 +32,7 @@ turtles-own [
   dueled-this-tick          ; Flag to ensure at most one duel per tick
   boosted-by                ; Temporary confidence added by leader aura this tick
   lose-streak               ; Counter for consecutive losses
+  win-streak                ; Counter for consecutive wins
   team-history              ; 
 ]
 
@@ -91,6 +92,7 @@ to create-people [num]
     set size 0.5 + (confidence / 200)
     set disband-timer 0
     set lose-streak 0
+    set win-streak 0
   ]
 end
 
@@ -314,10 +316,13 @@ to resolve-loss [ loser winner ]
   if prob < 0 [ set prob 0 ]
   if prob > 1 [ set prob 1 ]
 
-  ; Winner gains confidence, capped at their initial baseline
+  ; Winner gains confidence with win streak bonus
   ask winner [
-    set confidence min list initial-confidence (confidence + 5)
+    set win-streak win-streak + 1
     set lose-streak 0  ; Reset lose streak on win
+    let base-bonus 2  ; Same parameter as lose streak for symmetry
+    let streak-bonus (win-streak * base-bonus)
+    set confidence min list maximal-confidence (confidence + streak-bonus)
     set size 0.5 + (confidence / 200)
   ]
 
@@ -334,7 +339,8 @@ to resolve-loss [ loser winner ]
       ask loser [
         set team-id w_team
         set breed followers
-        apply-team-color false
+        set win-streak 0  ; Reset win streak on loss
+      apply-team-color false
         if not member? w_team team-history [ set team-history lput w_team team-history ]
         set lose-streak 0
       ]
@@ -361,6 +367,9 @@ to resolve-loss [ loser winner ]
       apply-team-color true
       ; Reset confidence to initial baseline on founding
       set confidence initial-confidence
+      ; Reset streaks on fresh start as leader
+      set lose-streak 0
+      set win-streak 0
       set size 0.5 + (confidence / 200)
       ; Founding grace: delay disband logic to allow recruitment
       set disband-timer -24
@@ -379,6 +388,7 @@ to resolve-loss [ loser winner ]
         ; Confidence decreases based on lose streak (progressive penalty)
           if l_team != -1 [
           set lose-streak lose-streak + 1
+          set win-streak 0  ; Reset win streak on loss
           let base-penalty 2  ; Tunable parameter for streak penalty
           let streak-penalty (lose-streak * base-penalty)
           set confidence max list 0 (confidence - streak-penalty)
