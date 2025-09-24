@@ -10,6 +10,8 @@
   distinct-team-palette    ; Fixed palette for distinct team colors
   total-teams-reached-3    ; Lifetime count of teams that ever had >=3 members
   counted-teams-3          ; List of team colors already counted towards >=3
+  confidence-recovery-rate ; Amount of confidence regained per tick when below baseline
+  disband-confidence-threshold ; Leader confidence threshold to trigger immediate disband
   ]
 
 breed [leaders leader]
@@ -22,10 +24,10 @@ turtles-own [
   initial-confidence        ; The agent's initial confidence at creation
   manipulation              ; Ability to influence others (0-100)
   speed                     ; Movement speed per tick
-  interaction-radius        ; Distance for interaction with others
   persuasions-this-tick     ; Count of successful persuasions credited this tick
   disband-timer             ; Timer for disbandment
   dueled-this-tick          ; Flag to ensure at most one duel per tick
+  boosted-by                ; Temporary confidence added by leader aura this tick
 ]
 
 to setup
@@ -40,9 +42,12 @@ to setup
   set maximal-manipulation 100
   set total-teams-reached-3 0
   set counted-teams-3 []
+  set confidence-recovery-rate 0.5
+  set disband-confidence-threshold 50
   ; Initialize a high-contrast palette (NetLogo 0-140 color wheel, spaced hues)
-  set distinct-team-palette [15 25 35 45 55 65 75 85 95 105 115 125 135 5  
-                             20 30 40 50 60 70 80 90 100 110 120 130 10 0]
+  ; Use a palette that avoids white/gray/black for visibility on dark background
+  set distinct-team-palette [15 25 35 45 55 65 75 85 95 105 115 125 135
+                             20 30 40 50 60 70 80 90 100 110 120 130]
 
   ; Create the entire population as followers with no team
   create-people number-of-people
@@ -72,7 +77,6 @@ to create-people [num]
   let manip-range max list 0 (max-manipulation - min-manipulation)
   set manipulation min-manipulation + (ifelse-value manip-range > 0 [ random (manip-range + 1) ] [ 0 ])
     set speed 0.1 + random-float 0.4 ; 0.1-0.5
-    set interaction-radius 2 + random 3 ; 2-4
 
     ; Set size based on confidence
     set size 0.5 + (confidence / 200)
@@ -104,7 +108,6 @@ to promote-top-leaders
   apply-team-color true
     set team-list lput new-team-color team-list
 
-    set interaction-radius interaction-radius + 2
     set size size + 0.3
 
     set i i + 1
@@ -120,6 +123,9 @@ to go
   reset-persuasion-flags
   ; Reset per-tick duel flags
   reset-duel-flags
+
+  ; Revert last tick's temporary leader boosts before applying new ones
+  reset-boost-state
 
   ; Movement phase
   ask turtles [
@@ -143,11 +149,14 @@ to go
   ; Update lifetime counter for teams that have ever reached >=3 members
   update-teams-reached-3
 
-  ; Disband weak teams (leader confidence <= 50)
+  ; Disband weak teams (by timer or low leader confidence)
   disband-weak-teams
 
   ; Remove teams with zero members from active team list
   prune-empty-teams
+
+  ; Gradual confidence recovery towards initial-confidence baseline
+  recover-confidence-phase
 
   ; Update visuals
   update-team-plots
@@ -192,79 +201,18 @@ to boost-confidence
   if effective-radius > 10 [ set effective-radius 10 ]
   let nearby-followers followers in-radius effective-radius with [team-id = my-team]
 
+  ; Apply a reversible +5 confidence boost to nearby same-team followers
   ask nearby-followers [
-  set confidence min list maximal-confidence (confidence + 2)
-    ; Update size based on new confidence
-    set size 0.5 + (confidence / 200)
-  ]
-end
-
-; FOLLOWER PROCEDURES
-to evaluate-surroundings
-  ; Calculate influence scores for each team in interaction radius
-  let my-team team-id
-  let my-score calculate-team-influence-score my-team
-
-  ; Find all different teams in the area
-  let nearby-agents other turtles in-radius interaction-radius
-  ; Collect nearby teams excluding unassigned (-1)
-  let nearby-teams remove -1 remove-duplicates [team-id] of nearby-agents
-
-  ; Calculate scores for other teams
-  let best-opponent-team my-team
-  let best-opponent-score my-score
-
-  foreach nearby-teams [ opponent-team ->
-    if opponent-team != my-team [
-      let opponent-score calculate-team-influence-score opponent-team
-      if opponent-score > best-opponent-score [
-        set best-opponent-team opponent-team
-        set best-opponent-score opponent-score
-      ]
-    ]
-  ]
-
-  ; Check if should switch teams
-  if best-opponent-score > my-score [
-    let switch-probability ((best-opponent-score - my-score) / best-opponent-score) * environmental-modifier
-
-    if random-float 1 < switch-probability [
-      ; Switch to the more influential team
-      set team-id best-opponent-team
-      ; Apply team color consistently
-      apply-team-color false
-
-      ; Reset confidence to the agent's initial value (capped by maximal-confidence)
-      set confidence min list maximal-confidence initial-confidence
+    let inc min list 5 (maximal-confidence - confidence)
+    if inc > 0 [
+      set confidence confidence + inc
+      set boosted-by boosted-by + inc
       set size 0.5 + (confidence / 200)
-
-      ; Credit persuasion to one member (prefer a leader) of the destination team nearby
-      let candidate-persuaders turtles in-radius interaction-radius with [team-id = best-opponent-team and self != myself]
-      if any? candidate-persuaders [
-        let candidate-leaders leaders with [team-id = best-opponent-team] in-radius interaction-radius
-        let persuader (ifelse-value any? candidate-leaders [ one-of candidate-leaders ] [ one-of candidate-persuaders ])
-        ask persuader [
-          set persuasions-this-tick persuasions-this-tick + 1
-          set confidence min list maximal-confidence (confidence + 0.2)
-          set manipulation min list maximal-manipulation (manipulation + 2)  ; Scaled up for 0-100 range
-          set size 0.5 + (confidence / 200)
-        ]
-      ]
     ]
   ]
 end
 
-to-report calculate-team-influence-score [team-col]
-  ; Calculate total influence score for a specific team in interaction radius
-  let team-agents other turtles in-radius interaction-radius with [team-id = team-col]
-  let total-score 0
-
-  ask team-agents [
-    set total-score total-score + (confidence * manipulation)
-  ]
-
-  report total-score
-end
+; FOLLOWER PROCEDURES (Removed radius-based mechanics; duels handle changes)
 
 ; --- PERSUASION SUPPORT PROCEDURES ---
 to reset-persuasion-flags
@@ -284,12 +232,23 @@ to reset-duel-flags
   ask turtles [ set dueled-this-tick false ]
 end
 
+to reset-boost-state
+  ; Remove temporary leader aura boosts applied in the previous tick
+  ask turtles with [boosted-by > 0] [
+    set confidence max list 0 (confidence - boosted-by)
+    set boosted-by 0
+    set size 0.5 + (confidence / 200)
+  ]
+end
+
 to duel-phase
   ; Pair up random turtles that haven't dueled this tick
   let shuffled shuffle sort turtles
   foreach shuffled [ a ->
     if [dueled-this-tick] of a = false [
-      let opponent one-of turtles with [ self != a and dueled-this-tick = false ]
+      ; Only duel with agents from a different team; prevents friendly fire.
+      ; Allows team vs neutral (-1) but disallows neutral vs neutral.
+      let opponent one-of turtles with [ self != a and dueled-this-tick = false and team-id != [team-id] of a ]
       if opponent != nobody [
         ask a [ set dueled-this-tick true ]
         ask opponent [ set dueled-this-tick true ]
@@ -335,9 +294,21 @@ to resolve-loss [ loser winner ]
   ; After losing, agent either creates new team with probability or joins winner team
   let l_conf [confidence] of loser
   let l_manip [manipulation] of loser
+  let l_team [team-id] of loser
+  let w_team [team-id] of winner
   let prob ((l_manip - l_conf) / 100) * new-team-chance
   if prob < 0 [ set prob 0 ]
   if prob > 1 [ set prob 1 ]
+
+  ; If loser is neutral and winner has a team, instantly join winner's team
+  if (l_team = -1 and w_team != -1) [
+    ask loser [
+      set team-id w_team
+      set breed followers
+      apply-team-color false
+    ]
+    stop
+  ]
 
   let roll random-float 1
   if roll < prob [
@@ -353,12 +324,22 @@ to resolve-loss [ loser winner ]
     ]
   ]
   if roll >= prob [
-    ; join winner's team
-    let w_team [team-id] of winner
-    ask loser [
-      set team-id w_team
-      set breed followers
-      apply-team-color false
+    if w_team != -1 [
+      ; join winner's team (only if winner has a team)
+      ask loser [
+        set team-id w_team
+        set breed followers
+        apply-team-color false
+        ; Confidence decreases only when switching from a team to another team
+        if l_team != -1 [
+          set confidence max list 0 (confidence - 10)
+          set size 0.5 + (confidence / 200)
+        ]
+      ]
+    ]
+    if w_team = -1 [
+      ; winner is neutral: do not join neutrality; stay on current team
+      ; no change to team-id in this branch
     ]
   ]
 end
@@ -384,75 +365,50 @@ to reassign-leaders
 end
 
 to disband-weak-teams
-  let teams-to-disband []
-
+  ; Leaders with zero followers accumulate time; after 168 ticks, try to found a new team or go neutral
   ask leaders [
-    ; Count followers of this specific leader's team
-    let follower-count count followers with [team-id = [team-id] of myself]
+    let my-team team-id
+    let follower-count count followers with [team-id = my-team]
+    if follower-count = 0 [ set disband-timer disband-timer + 1 ]
+    if follower-count > 0 [ set disband-timer 0 ]
 
-    ; If there are no followers, increment the timer
-    if follower-count = 0 [
-      set disband-timer disband-timer + 1
-    ]
+    if disband-timer >= 1000 [
+      ; Try to found a new team based on probability, else become neutral
+      let l_conf confidence
+      let l_manip manipulation
+      let prob ((l_manip - l_conf) / 100) * new-team-chance
+      if prob < 0 [ set prob 0 ]
+      if prob > 1 [ set prob 1 ]
 
-    ; If there are followers, reset the timer
-    if follower-count > 0 [
-      set disband-timer 0
-    ]
-
-    ; If the timer reaches 24, mark the team for disbandment
-    if disband-timer >= 24 [
-      set teams-to-disband lput team-id teams-to-disband
-    ]
-  ]
-
-  ; Disband the identified teams
-  foreach teams-to-disband [ tcol ->
-    ask turtles with [team-id = tcol] [
-      set team-id -1
-      set breed followers
-      set color white
-    ]
-    set team-list remove tcol team-list
-  ]
-end
-
-to attempt-to-create-new-team
-  ;; Probabilistic founding (no hard cutoffs). Requires local diversity (>=2 teams nearby).
-  let nearby-agents other turtles in-radius interaction-radius
-  let nearby-teams remove -1 remove-duplicates [team-id] of nearby-agents
-
-  if length nearby-teams >= 2 [
-    let manipulation-factor manipulation / 100
-    let confidence-factor (100 - confidence) / 100
-    let final-new-team-chance environmental-modifier * manipulation-factor * confidence-factor * new-team-chance
-
-    if random-float 1 < final-new-team-chance [
-      let different-team-neighbors nearby-agents with [team-id != [team-id] of myself]
-      if any? different-team-neighbors [
-        let mixing-partner one-of different-team-neighbors
-
-        ;; choose distinct color (palette preferred, else distinct pick)
+      let roll random-float 1
+      if roll < prob [
+        ; Found a new team (change to a fresh color)
         let new-color (ifelse-value (length team-list < length distinct-team-palette)
                           [ next-available-team-color ]
                           [ pick-distinct-color 10 ])
-
         if not member? new-color team-list [ set team-list lput new-color team-list ]
-
-        ;; become leader of new team
-        set breed leaders
         set team-id new-color
         apply-team-color true
-
-        ;; founder attribute changes (respect caps)
-        set confidence min list maximal-confidence initial-confidence
-        set manipulation min list maximal-manipulation (manipulation + 20)
-        set interaction-radius interaction-radius + 2
-        set size size + 0.3
+        set disband-timer 0
       ]
+      if roll >= prob [
+        ; Become neutral with a confidence drop, then recover gradually
+        set team-id -1
+        set breed followers
+        set color white
+        set confidence max list 0 (confidence - 10)
+        set size 0.5 + (confidence / 200)
+        set disband-timer 0
+      ]
+
+      ; Clean up old team color if no members remain
+      let remaining count turtles with [team-id = my-team]
+      if remaining = 0 [ set team-list remove my-team team-list ]
     ]
   ]
 end
+
+; attempt-to-create-new-team removed: creation happens only via duel loss rule
 
 to-report mix-colors [color1 color2]
   ; Robust color mixing to produce a distinct, valid NetLogo color
@@ -469,10 +425,14 @@ to-report mix-colors [color1 color2]
   while [mixed-color < 0] [ set mixed-color mixed-color + 140 ]
   while [mixed-color >= 140] [ set mixed-color mixed-color - 140 ]
 
+  ; Avoid black/dark gray segment for visibility
+  if mixed-color < 12 [ set mixed-color mixed-color + 20 ]
+
   ; Ensure distinct from base and existing teams; perturb until unique
   while [ (abs(mixed-color - base1) < 1) or member? mixed-color team-list ] [
     set mixed-color mixed-color + (5 + random 20)
     while [mixed-color >= 140] [ set mixed-color mixed-color - 140 ]
+    if mixed-color < 12 [ set mixed-color mixed-color + 20 ]
   ]
 
   report mixed-color
@@ -517,6 +477,15 @@ to update-teams-reached-3
 end
 
 ; UTILITY PROCEDURES
+to recover-confidence-phase
+  ;; Gradually recover confidence up to initial-confidence baseline
+  ask turtles [
+    if confidence < initial-confidence [
+      set confidence min list initial-confidence (confidence + confidence-recovery-rate)
+      set size 0.5 + (confidence / 200)
+    ]
+  ]
+end
 to prune-empty-teams
   ;; Remove any team color from team-list with zero members
   let to-remove []
@@ -532,7 +501,15 @@ to apply-team-color [is-leader]
   ;; Apply a consistent color scheme for teams with optional vivid mode
   if team-id = -1 [ set color white stop ]
   let base team-id
-  ifelse is-leader [ set color base + 2 ] [ set color base ]
+  let c (ifelse-value is-leader [ base + 2 ] [ base ])
+  ; Normalize to color wheel
+  while [c >= 140] [ set c c - 140 ]
+  while [c < 0] [ set c c + 140 ]
+  ; Avoid white for any non-neutral agent
+  if c = white [ set c c + 5 ]
+  ; Avoid black/dark gray (very low brightness) by shifting hue
+  if member? (floor c) [0 1 2 3 4 5 6 7 8 9 10] [ set c c + 20 ]
+  set color c
 end
 
 to-report next-available-team-color
@@ -555,6 +532,8 @@ to-report pick-distinct-color [min-gap]
     set c random 140
     set attempts attempts + 1
   ]
+  ; Avoid dark hues; shift into brighter band if needed
+  if c < 12 [ set c c + 20 ]
   report c
 end
 
@@ -606,9 +585,9 @@ end]]></code>
     <button x="126" y="10" height="40" disableUntilTicks="false" forever="true" kind="Observer" width="63">go</button>
     <slider x="32" step="10" y="317" max="500" width="172" display="number-of-people" height="50" min="50" direction="Horizontal" default="250.0" variable="number-of-people"></slider>
     <slider x="33" step="1" y="388" max="5" width="172" display="initial-teams" height="50" min="2" direction="Horizontal" default="3.0" variable="initial-teams"></slider>
-    <slider x="31" step="0.25" y="447" max="1" width="172" display="leader-boost (0..1)" height="50" min="0" direction="Horizontal" default="0.25" variable="leader-boost (0..1)"></slider>
+  <slider x="31" step="0.25" y="447" max="1" width="172" display="leader-boost (0..1)" height="50" min="0" direction="Horizontal" default="0.25" variable="leader-boost-radius"></slider>
   <slider x="29" step="0.001" y="507" max="1" width="172" display="new-team-chance" height="50" min="0.001" direction="Horizontal" default="0.001" variable="new-team-chance"></slider>
-    <slider x="27" step="0.25" y="570" max="1" width="172" display="weather (0..1)" height="50" min="0" direction="Horizontal" default="0.0" variable="weather (0..1)"></slider>
+  <slider x="27" step="0.25" y="570" max="1" width="172" display="weather (0..1)" height="50" min="0" direction="Horizontal" default="0.0" variable="weather"></slider>
     <slider x="27" step="1" y="630" max="100" width="172" display="min-confidence" height="50" min="0" direction="Horizontal" default="20.0" variable="min-confidence"></slider>
     <slider x="27" step="1" y="690" max="100" width="172" display="max-confidence" height="50" min="0" direction="Horizontal" default="80.0" variable="max-confidence"></slider>
     <slider x="27" step="1" y="750" max="100" width="172" display="min-manipulation" height="50" min="0" direction="Horizontal" default="20.0" variable="min-manipulation"></slider>
