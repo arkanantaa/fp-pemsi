@@ -53,10 +53,8 @@ to setup
   set neutral-join-base 0.5  ;; neutrals join 60% baseline when they lose to a team (modifiable)
   set switches-this-tick 0
   set total-switches 0
-  ; Initialize a high-contrast palette (NetLogo 0-140 color wheel, spaced hues)
-  ; Use a palette that avoids white/gray/black for visibility on dark background
-  set distinct-team-palette [15 25 35 45 55 65 75 85 95 105 115 125 135
-                             20 30 40 50 60 70 80 90 100 110 120 130]
+  ; Initialize a bright, high-contrast palette (avoid dark/gray/white bands)
+  set distinct-team-palette [15 25 35 45 55 65 75 85 95 115 135 125 30 50 70 90 110 130]
 
   ; Create the entire population as followers with no team
   create-people number-of-people
@@ -99,7 +97,7 @@ end
 
 to promote-top-leaders
   ; Generate colors dynamically based on initial-teams slider
-  let color-options [15 105 55 25 85 45 135 125] ; Pool of distinct colors
+  let color-options [15 55 25 85 45 135 95 115] ; Pool of bright distinct colors
   let initial-colors []
   repeat initial-teams [
     set initial-colors lput (item (length initial-colors) color-options) initial-colors
@@ -584,12 +582,28 @@ to-report enforce-visible-color [c]
   report c
 end
 
+to-report bright-team-color [h is-leader]
+  ;; Snap to base hue and apply a bright shade offset; leaders a bit brighter
+  let b (round (h / 10)) * 10
+  while [b >= 140] [ set b b - 140 ]
+  while [b < 0] [ set b b + 140 ]
+  ;; Avoid very low hues that trend dark on black backgrounds
+  if b < 12 [ set b 15 ]
+  let shade (ifelse-value is-leader [ 6 ] [ 4 ])
+  let cc b + shade
+  ;; Avoid exact white constant and normalize
+  if cc = white [ set cc b + (shade - 2) ]
+  while [cc >= 140] [ set cc cc - 140 ]
+  while [cc < 0] [ set cc cc + 140 ]
+  ;; Final pass through visibility guard in case of edge cases
+  report enforce-visible-color cc
+end
+
 to apply-team-color [is-leader]
   ;; Apply a consistent, high-contrast color scheme (white only for neutral)
   if team-id = -1 [ set color white stop ]
   let base team-id
-  let c (ifelse-value is-leader [ base + 2 ] [ base ])
-  set c enforce-visible-color c
+  let c bright-team-color base is-leader
   set color c
 end
 
