@@ -305,6 +305,12 @@ to resolve-loss [ loser winner ]
   if prob < 0 [ set prob 0 ]
   if prob > 1 [ set prob 1 ]
 
+  ; Winner gains confidence, capped at their initial baseline
+  ask winner [
+    set confidence min list initial-confidence (confidence + 5)
+    set size 0.5 + (confidence / 200)
+  ]
+
   ; If loser is neutral and winner has a team, instantly join winner's team
   if (l_team = -1 and w_team != -1) [
     ask loser [
